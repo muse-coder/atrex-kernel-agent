@@ -1,0 +1,6 @@
+[submodule "external/KernelWiki"]
+	path = external/KernelWiki
+	url = git@github.com:mit-han-lab/KernelWiki.git
+[submodule "external/ncu-report-skill"]
+	path = external/ncu-report-skill
+	url = git@github.com:DongyunZou/ncu-report-skill.git
