@@ -8,7 +8,7 @@ Usage:
 
 Creates a task-owned git worktree, enters the kernel task directory inside that
 worktree, and launches Claude Code with CLAUDE_PROJECT_DIR set to the kernel
-directory so Humanize hooks stay local to that task's .humanize state.
+directory.
 
 Environment overrides:
   IK_BASE_BRANCH        Base branch/ref for the worktree
@@ -27,11 +27,8 @@ Environment overrides:
   IK_BASH_BIN           Bash used for launch + spawned Claude hooks.
   IK_LAUNCHER_NAME      Friendly launcher name
   IK_TASK_LABEL         Override the friendly label for branch/worktree names
-  IK_BOOTSTRAP_DRAFT=0  Skip automatic .humanize/kernel-agent/draft.md creation
+  IK_BOOTSTRAP_DRAFT=0  Skip automatic .rlcr/draft.md creation
   IK_NO_CLAUDE=1        Create the worktree without launching Claude
-  IS_SANDBOX            Forwarded to Claude (default: 1)
-  HUMANIZE_CODEX_BYPASS_SANDBOX
-                        Forwarded to Claude (default: true)
 EOF
 }
 
@@ -190,15 +187,17 @@ git -C "$REPO_ROOT" worktree add -b "$BRANCH" "$WORKTREE_ROOT" "$BASE_BRANCH"
 cd "$WORKTREE_ROOT/$TASK_DIR"
 
 if [[ "${IK_BOOTSTRAP_DRAFT:-1}" != "0" ]]; then
-  mkdir -p .humanize/kernel-agent
-  DRAFT_FILE=".humanize/kernel-agent/draft.md"
+  mkdir -p .rlcr
+  DRAFT_FILE=".rlcr/draft.md"
   if [[ ! -f "$DRAFT_FILE" ]]; then
     {
       cat <<EOF
-# Humanize Gen-Plan Draft For ${TASK_SLUG}
+# RLCR Plan Draft — ${TASK_SLUG}
 
-Use this draft to generate an RLCR implementation plan for the kernel
-optimization task in this directory.
+This is the optimization plan draft for the kernel task in this directory.
+Review and refine it, then start the RLCR loop with:
+
+  /project:rlcr .rlcr/plan.md --base-branch ${REVIEW_BASE}
 
 ## Source Prompt
 
@@ -211,7 +210,7 @@ EOF
 ## Mandatory Constraints
 
 - Use this current kernel folder as the optimization workspace.
-- Keep \`.humanize*\` untracked.
+- Keep \`.rlcr/\` untracked.
 - Read \`../../docs/benchmark_contract.md\` — its local-baseline and A/B
   benchmark rules are mandatory.
 - Read \`../../docs/kernel_optimization_rules.md\` and
@@ -226,13 +225,10 @@ EOF
   - K: kernel semantics and callsite contract
   - R: correctness oracle and baseline path
   - W: workload shape set and benchmark methodology
-- Do not implement kernels, run long benchmarks, or collect NCU evidence before
-  RLCR is active.
 - Check GPU state before and after every benchmark/profile run.
 - Do not fabricate benchmark, NCU, correctness, or GPU-id evidence.
 - Keep all artifacts inside this kernel folder.
 - Keep raw profiler/NCU/build artifacts local; do not stage them for the PR.
-- Always ask before destructive operations or relaxing correctness requirements.
 
 ## Expected Plan Shape
 
@@ -254,10 +250,10 @@ echo
 echo "== Claude project root =="
 echo "$PWD"
 echo
-echo "Draft: .humanize/kernel-agent/draft.md"
-echo "Inside Claude Code, use:"
-echo "/humanize:gen-plan --input .humanize/kernel-agent/draft.md --output .humanize/kernel-agent/refined-plan.md --direct"
-echo "/humanize:start-rlcr-loop .humanize/kernel-agent/refined-plan.md --skip-quiz --claude-answer-codex --max 12 --codex-model gpt-5.5:high --codex-timeout 5400 --base-branch $REVIEW_BASE"
+echo "Draft: .rlcr/draft.md"
+echo "Inside Claude Code, refine the draft into a plan, then start the loop:"
+echo "  1. Review and edit .rlcr/draft.md → save as .rlcr/plan.md"
+echo "  2. /project:rlcr .rlcr/plan.md --base-branch $REVIEW_BASE"
 echo
 
 if [[ "${IK_NO_CLAUDE:-}" == "1" ]]; then
@@ -270,8 +266,6 @@ exec env \
   SHELL="$IK_SELECTED_BASH" \
   IK_BASH_BIN="$IK_SELECTED_BASH" \
   CLAUDE_PROJECT_DIR="$PWD" \
-  IS_SANDBOX="${IS_SANDBOX:-1}" \
-  HUMANIZE_CODEX_BYPASS_SANDBOX="${HUMANIZE_CODEX_BYPASS_SANDBOX:-true}" \
   "$CLAUDE_BIN" \
   --permission-mode bypassPermissions \
   --model "$CLAUDE_MODEL" \

@@ -42,15 +42,17 @@ external/                      知识子模块（可选）
 git clone <repo-url> && cd IterKernel
 git submodule update --init --recursive
 
-# 安装 FlashInfer（默认 baseline 来源，必须从源码编译最新版）
+# 安装 FlashInfer AOT（默认 baseline 来源，必须用最新源码的 AOT 编译版）
 git clone https://github.com/flashinfer-ai/flashinfer.git --recursive
 cd flashinfer
-pip install -e . -v
+FLASHINFER_ENABLE_AOT=1 pip install -e . -v
 cd ..
 ```
 
-**必须从源码编译最新 main 分支**,不要用 pip 预编译 wheel——预编译版本往往
-落后于最新优化,作为 baseline 不够强。编译要求见
+**必须从最新 main 源码编译 AOT 版本**（`FLASHINFER_ENABLE_AOT=1`），不要用
+pip 预编译 wheel（版本滞后）,也不要用 JIT 模式（运行时编译有额外开销,
+不代表部署态性能）。AOT 版预编译所有 cubin,是 FlashInfer 实际部署时的路径,
+性能最强。编译要求见
 [FlashInfer 安装文档](https://docs.flashinfer.ai/installation.html)。
 
 ## 快速开始
@@ -75,14 +77,18 @@ scripts/launch_task.sh campaigns/operators/b200_my_kernel__multi_shape
 
 ### 3. 在 Claude Code 内启动 RLCR 循环
 
-```text
-/humanize:gen-plan --input .humanize/kernel-agent/draft.md \
-  --output .humanize/kernel-agent/refined-plan.md --direct
+启动器会生成 `.rlcr/draft.md`（包含任务卡和约束）。先检查并完善它，保存为
+`.rlcr/plan.md`，然后启动循环：
 
-/humanize:start-rlcr-loop .humanize/kernel-agent/refined-plan.md \
-  --skip-quiz --claude-answer-codex --max 12 \
-  --base-branch <printed-ik-base-branch>
+```text
+/project:rlcr .rlcr/plan.md --base-branch <printed-ik-base-branch>
 ```
+
+这会启动一个 Ultracode Workflow，自动迭代直到达到停止条件：
+- **Roofline efficiency ≥ 90%** → 优化成功，停止
+- **连续 50 轮无进展** → 卡住，停止
+
+无轮次上限，只要有进展就继续优化。全部在 Claude Code 内部闭环，无外部依赖。
 
 ## 任务生命周期
 
@@ -102,14 +108,16 @@ docs/           run log、profile 笔记、结果、决策记录
 
 ## RLCR 迭代循环
 
-使用 [Humanize](https://github.com/PolyArch/humanize) 插件驱动：
+使用 Claude Code 内置 subagent 驱动（`/project:rlcr`），不依赖外部工具：
 
-1. **Claude 实现** — 写/改 `solution/kernel.cu`，跑 benchmark
-2. **Codex 评审** — 独立审查 diff
-3. **Claude 修正** — 回应评审意见，重新 benchmark
-4. **循环** — 由 `--max N` 轮次上限约束
+1. **Coder subagent** — 写/改 `solution/kernel.cu`，跑 correctness + benchmark
+2. **Analyst subagent** — 审查 diff + 跑 NCU profiling + roofline 分析 → 找瓶颈 →
+   给出 P0-P3 问题列表 + 下一步优化方向 + roofline efficiency + verdict
+3. **Workflow 循环** — 程序化控制：efficiency ≥ 90% 则成功停止，连续 50 轮无进展
+   则停止，无轮次上限
 
 每轮迭代开始前必须刷新上下文：任务卡、当前 benchmark 证据、KernelWiki。
+状态和每轮记录保存在 `.rlcr/<timestamp>/` 目录下。
 
 ## 环境变量
 

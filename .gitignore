@@ -2,6 +2,7 @@ __pycache__/
 .pytest_cache/
 .humanize/
 .humanize-*/
+.rlcr/
 *.py[cod]
 *.egg-info/
 

@@ -14,9 +14,13 @@ Each task must end with two local implementations:
 
 When the task prompt specifies a particular baseline, use that implementation.
 When no specific baseline is given, default to the corresponding FlashInfer
-kernel as the reference implementation. FlashInfer must be built from the
-latest source (not a pre-built wheel) so the baseline reflects the strongest
-available implementation. See README for build instructions.
+kernel as the reference implementation. FlashInfer must be installed as the
+AOT pre-compiled (cubin) version from the latest source
+(`FLASHINFER_ENABLE_AOT=1 pip install -e .`) so the baseline reflects the
+strongest available implementation in its deployment configuration. Do not
+use the JIT/Python mode as the baseline — JIT has runtime compilation
+overhead that does not represent production performance. See README for
+build instructions.
 
 Record the baseline's origin in `docs/baseline_source.md`:
 - source: FlashInfer (default) or other specified implementation
