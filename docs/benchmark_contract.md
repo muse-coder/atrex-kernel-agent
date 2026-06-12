@@ -1,33 +1,25 @@
 # Standalone Benchmark Contract
 
-This repository optimizes GPU kernels without interacting with the upstream
-framework at benchmark runtime. The upstream framework is only a source-code
-provider for the local baseline.
+This repository benchmarks kernel optimizations using local, self-contained
+harnesses. Both baseline and candidate run from local source inside the task
+directory.
 
 ## Hard Rules
 
-- Do not patch, import, monkey-patch, or install into the upstream framework
-  during correctness or benchmark runs.
-- Copy the relevant upstream kernel source into `baseline/` before implementing
-  the candidate. Resolve the latest upstream main branch commit at
-  baseline-recovery time, copy the kernel code from that exact commit, and
-  record the repository URL, branch, resolved commit, resolution time, and
-  copied file list in `docs/baseline_source.md`.
 - Baseline and candidate must expose matching local entry points. Any wrapper
   overhead included for one side must be included for the other side.
-- Every task must contain two local implementations: copied upstream source in
+- Every task must contain two local implementations: reference implementation in
   `baseline/` and the optimized implementation in `solution/`.
 - Prefer local direct CUDA ABI for both sides: output tensors passed last,
   `destination_passing_style = true`.
 - Every CUDA launch must use PyTorch's current stream:
   `at::cuda::getCurrentCUDAStream()`.
-- If the copied upstream implementation is CUDA/C++ CUDA, expose the baseline
-  and candidate through the same local registration/export/build style.
-- Do not pass `--use_fast_math` unless the copied upstream baseline already uses
-  it and the candidate uses the exact same flag.
-- If the copied upstream implementation is Triton, CuTe DSL, or Python, keep it
-  local and build a local baseline adapter with the same benchmark ABI used by
-  the candidate.
+- If the baseline is CUDA/C++ CUDA, expose baseline and candidate through the
+  same local registration/export/build style.
+- Do not pass `--use_fast_math` unless the baseline already uses it and the
+  candidate uses the exact same flag.
+- If the baseline is Triton, CuTe DSL, or Python, keep it local and build a
+  local baseline adapter with the same benchmark ABI used by the candidate.
 - Workloads are frozen before tuning. Changing workloads, tolerances, scoring,
   or benchmark timing rules requires deleting old results and remeasuring both
   baseline and candidate.
@@ -36,7 +28,7 @@ provider for the local baseline.
 
 ```text
 baseline/
-  copied upstream source files
+  reference kernel source files
   kernel.cu or binding.py exposing the baseline ABI
 solution/
   kernel.cu or binding.py exposing the candidate ABI
@@ -70,9 +62,9 @@ void my_kernel(TensorView input, TensorView output) {
 }
 ```
 
-The task may use one exported function per upstream public entry point, or a
-single exported function with an explicit selector argument. Baseline and
-candidate must use the same choice.
+The task may use one exported function per baseline entry point, or a single
+exported function with an explicit selector argument. Baseline and candidate
+must use the same choice.
 
 ## Workload Rules
 
@@ -125,7 +117,7 @@ use_isolated_runner = true
 
 - Compare candidate and baseline against an independent PyTorch/math oracle when
   practical. If a full oracle is expensive, at minimum compare candidate against
-  the copied baseline plus targeted oracle rows.
+  the baseline plus targeted oracle rows.
 - Check shapes, dtypes, NaN/Inf, and tolerance per output.
 - Poison output buffers before each correctness run so stale-output and skipped
   kernel bugs are visible.
@@ -135,8 +127,7 @@ use_isolated_runner = true
 Every benchmark result must record:
 
 - task slug and target GPU
-- upstream baseline commit and copied files
-- candidate source hash
+- baseline and candidate source hash
 - exact command
 - CUDA, PyTorch, compiler versions
 - GPU model, GPU id, and idle state before/after

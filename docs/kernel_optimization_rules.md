@@ -7,25 +7,21 @@ guardrails that keep the optimization loop honest and reproducible.
 
 Each task must end with two local implementations:
 
-- `baseline/`: copied upstream kernel source plus a local callable exposed
-  through the task benchmark ABI.
+- `baseline/`: the reference kernel implementation, exposed through the task
+  benchmark ABI.
 - `solution/`: the optimized implementation exposed through the exact same
   task benchmark ABI.
 
-Before copying baseline code, resolve the latest commit on the upstream
-repository's main branch and use the kernel source from that exact commit. Do
-not use a stale pinned commit, a local checkout with unknown drift, or copied
-kernel code from a previous task. Record the upstream repository URL, branch,
-resolved commit SHA, resolution time, and copied file list in
+Record the baseline's origin (source file, version/commit if applicable) in
 `docs/baseline_source.md`.
 
-If the upstream baseline kernel is CUDA/C++ CUDA, the copied baseline and the
-optimized candidate must use the same local registration/export/build style.
-Do not expose the baseline through one wrapper and the candidate through a
-lighter direct path.
+If the baseline kernel is CUDA/C++ CUDA, the baseline and the optimized
+candidate must use the same local registration/export/build style. Do not
+expose the baseline through one wrapper and the candidate through a lighter
+direct path.
 
-If the copied upstream implementation is Triton, CuTe DSL, or Python, keep it
-inside `baseline/` and build a local adapter that has the same call signature,
+If the baseline implementation is Triton, CuTe DSL, or Python, keep it inside
+`baseline/` and build a local adapter that has the same call signature,
 argument ordering, stream behavior, and output allocation policy as the
 candidate adapter.
 
@@ -37,8 +33,8 @@ Every CUDA launch must use PyTorch's current stream, for example
 Compile flags must be symmetric between baseline and candidate whenever they can
 change numerics or code generation.
 
-Do not pass `--use_fast_math` unless the copied upstream kernel already uses it
-and the candidate uses the exact same flag. The default is no fast math.
+Do not pass `--use_fast_math` unless the baseline already uses it and the
+candidate uses the exact same flag. The default is no fast math.
 
 Do not add extra `nvcc` flags, architecture-specific toggles, or math-mode flags
 to only one side. Record all compile flags in `docs/benchmark_method.md`.
@@ -56,15 +52,15 @@ the current run.
 Record the host, GPU id, GPU model, and before/after GPU state in the task's
 `docs/run_log.md` or `docs/results.md`.
 
-Use a task-owned remote workspace for builds, benchmark logs, profiler traces,
-and NCU reports. Do not write artifacts into another task's workspace.
+Use a task-owned workspace for builds, benchmark logs, profiler traces, and NCU
+reports. Do not write artifacts into another task's workspace.
 
 ## Correctness Before Performance
 
-Before optimization, recover:
+Before optimization, identify:
 
-- the upstream baseline source file(s);
-- the public callable arguments and scalar parameters;
+- the baseline source file(s);
+- the callable arguments and scalar parameters;
 - the production workload rows;
 - the canonical regression grid (if defined in the task prompt or
   `docs/correctness_contract.md`).
@@ -97,7 +93,7 @@ A final performance claim must report:
 - median, mean, std, min, p10, and p90 latency per workload;
 - equal-weight geometric mean speedup over production workloads;
 - exact command lines;
-- baseline source commit and candidate source hash;
+- baseline and candidate source hash;
 - GPU host/id/model and idle-state evidence.
 
 Use Nsight Compute when a correct candidate is not clearly target-complete or
@@ -112,10 +108,10 @@ benchmark evidence, and a named active bound or blocker.
 
 ## PR Scope
 
-After a kernel is optimized, the final PR must include only:
+After a kernel is optimized, the final commit must include only:
 
-- the kernel-related source needed for the copied baseline, optimized solution,
-  local ABI, benchmark adapter, and correctness/benchmark harness;
+- the kernel source for baseline, optimized solution, local ABI, benchmark
+  adapter, and correctness/benchmark harness;
 - the per-shape baseline-vs-candidate performance comparison and final
   conclusion, normally in `docs/results.md`;
 - small method/provenance notes needed to reproduce the result.
@@ -123,7 +119,7 @@ After a kernel is optimized, the final PR must include only:
 Do not commit intermediate optimization artifacts such as raw NCU reports,
 Nsight traces, profiler run directories, temporary harness binaries, build
 outputs, scratch logs, failed experiment dumps, or large benchmark JSONL files
-unless the user explicitly asks for them in the PR.
+unless explicitly requested.
 
 ## Shape Specialization
 
@@ -145,9 +141,8 @@ need different implementations.
 ## Prior Art And Exploration
 
 Before settling on an implementation strategy in any iteration, read or query
-available knowledge skills when they could change the design: upstream framework
-sources, CUTLASS/CuTe, CUDA samples, PyTorch, KernelWiki, and task-local NCU
-evidence.
+available knowledge skills when they could change the design: CUTLASS/CuTe,
+CUDA samples, PyTorch, KernelWiki, and task-local NCU evidence.
 
 Record kept/rejected ideas in `docs/draft.md`, `docs/results.md`, or
 `docs/research.md`. Keep optimization attempts bounded and evidence-backed.
@@ -164,5 +159,5 @@ A task is complete only when:
 - NCU or a clear roofline-style analysis explains the final result or blocker;
 - `docs/results.md` summarizes the final command, per-shape performance
   comparison, result, and conclusion;
-- the staged PR diff excludes raw profiling, NCU, temporary build, and scratch
+- the staged diff excludes raw profiling, NCU, temporary build, and scratch
   artifacts.

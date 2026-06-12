@@ -1,156 +1,120 @@
 # IterKernel
 
-**渐进式优化 Kernel Agent — Iterative GPU Kernel Optimization Framework**
+**渐进式优化 Kernel Agent — Iterative GPU Kernel Optimization**
 
-IterKernel provides a reproducible, evidence-first framework for autonomous GPU
-kernel optimization. It turns real serving-framework kernels into structured
-optimization tasks: frozen production shapes, copied upstream baselines,
-symmetric benchmarks, correctness gates, Nsight Compute evidence, and
-iterative agent refinement (RLCR) in one place.
+IterKernel 提供一套可复现、证据优先的 GPU kernel 优化框架:固定 workload
+shape、对称 baseline/candidate ABI、CUDA-event A/B 交错计时、正确性门禁、
+Nsight Compute 证据、迭代式 agent 优化（RLCR）。
 
-Derived from [KDA-Pilot](https://github.com/BBuf/KDA-Pilot), generalized to be
-framework-agnostic — not tied to any specific upstream (SGLang, vLLM, PyTorch,
-etc.).
-
-## What's Inside
+## 仓库结构
 
 ```text
-docs/                          Framework rules and templates
-  kernel_optimization_rules.md   optimization guardrails (correctness-first,
-                                 symmetric ABI, evidence-backed no-go, ...)
-  benchmark_contract.md          standalone benchmark contract (A/B interleaved,
-                                 CUDA-event timing, provenance, ...)
-  correctness_contract.md        correctness requirements (poison, oracle, grid)
-  benchmark_template.py          standard benchmark harness (copy to bench/)
-  llm_kernel_workflow_rules.md   LLM serving kernel discovery workflow
+docs/                          规则与模板
+  kernel_optimization_rules.md   优化护栏（正确性优先、对称 ABI、evidence-backed）
+  benchmark_contract.md          benchmark 契约（A/B 交错、CUDA-event、provenance）
+  correctness_contract.md        正确性要求（poison、oracle、回归网格）
+  benchmark_template.py          标准 benchmark harness（复制到 bench/ 使用）
 
-templates/                     Task directory template
-  example_task/                  copy this to start a new kernel task
-    prompt.md                    task card template
-    config.toml                  build/benchmark defaults template
+templates/                     任务模板
+  example_task/                  复制这个目录来创建新的 kernel 优化任务
+    prompt.md                    任务卡模板
+    config.toml                  build/benchmark 默认值模板
     baseline/.gitkeep
     solution/.gitkeep
     bench/.gitkeep
     docs/.gitkeep
 
-campaigns/                     Your kernel optimization campaigns
-  operators/                     standalone operator tasks (norm, rope, ...)
-  llm/                           LLM kernel-workflow campaigns
+campaigns/operators/           你的 kernel 优化任务放这里
 
-scripts/                       Launcher scripts
-  launch_task.sh                 generic task launcher (worktree + Claude)
-  launch_tasks/                  per-task launcher wrappers
+scripts/                       启动脚本
+  launch_task.sh                 通用任务启动器（建 worktree + 起 Claude + RLCR）
+  launch_tasks/                  每个任务一个启动脚本
 
-external/                      Knowledge submodules (optional)
-  KernelWiki/                    Blackwell/Hopper kernel optimization wiki
-  ncu-report-skill/              Nsight Compute profiling skill
+external/                      知识子模块（可选）
+  KernelWiki/                    Blackwell/Hopper kernel 优化知识库
+  ncu-report-skill/              Nsight Compute profiling 方法论
 ```
 
-## Quick Start
+## 快速开始
 
-### 1. Create a new kernel task
+### 1. 创建一个 kernel 优化任务
 
 ```bash
-# Copy the template
 cp -r templates/example_task campaigns/operators/b200_my_kernel__multi_shape
 
-# Edit prompt.md and config.toml for your kernel
+# 编辑任务卡和配置
 vim campaigns/operators/b200_my_kernel__multi_shape/prompt.md
 vim campaigns/operators/b200_my_kernel__multi_shape/config.toml
 ```
 
-### 2. Launch with the agent
-
-```bash
-# Create a per-task launcher (optional but recommended)
-cat > scripts/launch_tasks/k01_b200_my_kernel.sh << 'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-IK_LAUNCHER_NAME="${IK_LAUNCHER_NAME:-$(basename "$0")}"
-export IK_LAUNCHER_NAME
-exec "$SCRIPT_DIR/../launch_task.sh" "campaigns/operators/b200_my_kernel__multi_shape" "$@"
-EOF
-chmod +x scripts/launch_tasks/k01_b200_my_kernel.sh
-
-# Run it
-scripts/launch_tasks/k01_b200_my_kernel.sh
-```
-
-Or launch directly:
+### 2. 启动 agent
 
 ```bash
 scripts/launch_task.sh campaigns/operators/b200_my_kernel__multi_shape
 ```
 
-Set `IK_NO_CLAUDE=1` to prepare the worktree without launching Claude.
+设置 `IK_NO_CLAUDE=1` 只准备 worktree 不起 Claude。
 
-### 3. Inside Claude Code, start the RLCR loop
-
-```text
-/humanize:gen-plan --input .humanize/kernel-agent/draft.md --output .humanize/kernel-agent/refined-plan.md --direct
-/humanize:start-rlcr-loop .humanize/kernel-agent/refined-plan.md --skip-quiz --claude-answer-codex --max 12 --base-branch <printed-ik-base-branch>
-```
-
-## Task Lifecycle
-
-Every kernel task follows the same shape:
+### 3. 在 Claude Code 内启动 RLCR 循环
 
 ```text
-prompt.md       task card for the agent
-config.toml     benchmark/build defaults
-baseline/       copied upstream baseline source
-solution/       optimized candidate source
-bench/          standalone benchmark and correctness harness
-docs/           run logs, profile notes, results, decision ledger
+/humanize:gen-plan --input .humanize/kernel-agent/draft.md \
+  --output .humanize/kernel-agent/refined-plan.md --direct
+
+/humanize:start-rlcr-loop .humanize/kernel-agent/refined-plan.md \
+  --skip-quiz --claude-answer-codex --max 12 \
+  --base-branch <printed-ik-base-branch>
 ```
 
-The key rule is **symmetry**: baseline and candidate must be compared through
-matching local interfaces, fixed workload rows, preallocated outputs,
-CUDA-event timing, interleaved A/B sampling, strict correctness checks, and
-full provenance.
+## 任务生命周期
 
-## RLCR Loop
+每个 kernel 优化任务的目录结构：
 
-The optimization loop uses the [Humanize](https://github.com/PolyArch/humanize)
-plugin for Claude Code:
+```text
+prompt.md       任务卡：要优化什么 kernel、约束、第一里程碑
+config.toml     build/benchmark 默认值
+baseline/       参考实现（对照组）
+solution/       你的优化版本
+bench/          独立 benchmark + 正确性 harness
+docs/           run log、profile 笔记、结果、决策记录
+```
 
-1. **Claude implements** — writes/modifies `solution/kernel.cu`, runs bench
-2. **Codex reviews** — independently reviews the diff against the base branch
-3. **Claude corrects** — addresses review findings, re-benchmarks
-4. **Repeat** — bounded by `--max N` rounds
+核心原则是**对称**：baseline 和 candidate 通过相同的本地接口、固定 workload、
+预分配 output、CUDA-event 计时、A/B 交错采样、严格正确性检查来比较。
 
-Each iteration must refresh context from the task prompt, rules, current
-evidence, and knowledge skills (KernelWiki, ncu-report-skill) before choosing
-the next edit.
+## RLCR 迭代循环
 
-## Environment Overrides
+使用 [Humanize](https://github.com/PolyArch/humanize) 插件驱动：
+
+1. **Claude 实现** — 写/改 `solution/kernel.cu`，跑 benchmark
+2. **Codex 评审** — 独立审查 diff
+3. **Claude 修正** — 回应评审意见，重新 benchmark
+4. **循环** — 由 `--max N` 轮次上限约束
+
+每轮迭代开始前必须刷新上下文：任务卡、当前 benchmark 证据、KernelWiki。
+
+## 环境变量
 
 ```bash
-IK_BASE_BRANCH=<ref>          # base branch for worktree (default: current)
-IK_NO_CLAUDE=1                # prepare worktree without launching Claude
-IK_BASH_BIN=/path/to/bash     # force modern bash (macOS 3.2 rejected)
-CLAUDE_MODEL=opus              # Claude model (default: opus)
-CLAUDE_EFFORT=max              # Claude effort (default: max)
+IK_BASE_BRANCH=<ref>          # worktree 的基准分支（默认当前分支）
+IK_NO_CLAUDE=1                # 只建 worktree 不起 Claude
+IK_BASH_BIN=/path/to/bash     # 指定 bash 4+（macOS 3.2 不支持）
+CLAUDE_MODEL=opus              # Claude 模型（默认 opus）
+CLAUDE_EFFORT=max              # Claude effort（默认 max）
 ```
 
-## External Knowledge (Optional)
+## 外部知识（可选）
 
 ```bash
 git submodule update --init --recursive
 ```
 
-- **KernelWiki** — Blackwell/Hopper kernel optimization knowledge base
-  (tcgen05, NVFP4, FA4, DeepGEMM, upstream PR references)
-- **ncu-report-skill** — Nsight Compute profiling methodology and report
-  analysis
+- **KernelWiki** — Blackwell/Hopper kernel 优化知识库
+  （tcgen05、NVFP4、FA4、DeepGEMM、CUTLASS/FlashInfer PR 引用）
+- **ncu-report-skill** — Nsight Compute profiling 方法论与报告分析
 
-## Key Documents
+## 核心文档
 
-- [`docs/kernel_optimization_rules.md`](docs/kernel_optimization_rules.md) —
-  optimization guardrails
-- [`docs/benchmark_contract.md`](docs/benchmark_contract.md) — benchmark rules
-- [`docs/correctness_contract.md`](docs/correctness_contract.md) — correctness
-  requirements
-- [`docs/llm_kernel_workflow_rules.md`](docs/llm_kernel_workflow_rules.md) —
-  LLM kernel discovery workflow
+- [`docs/kernel_optimization_rules.md`](docs/kernel_optimization_rules.md) — 优化护栏
+- [`docs/benchmark_contract.md`](docs/benchmark_contract.md) — benchmark 规则
+- [`docs/correctness_contract.md`](docs/correctness_contract.md) — 正确性要求

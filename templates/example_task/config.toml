@@ -6,10 +6,6 @@ slug = "example_task"
 arch = "b200"                # target GPU architecture
 target_gpu = "NVIDIA B200"
 family = "example"           # kernel family name
-entry_points = [
-  # upstream callable(s) to copy as baseline, e.g.:
-  # "framework.module.kernel:entry_function",
-]
 
 [build]
 language = "cuda"            # cuda | triton | cutedsl

@@ -14,12 +14,12 @@ optimization task must satisfy before benchmark results are considered valid.
    stale-output and skipped-kernel bugs are visible.
 
 3. **NaN/Inf preservation.** Preserve explicit NaN/Inf checks in the
-   correctness harness. If the upstream kernel never produces NaN/Inf on valid
+   correctness harness. If the baseline kernel never produces NaN/Inf on valid
    input, the candidate must not produce them either.
 
 4. **Oracle comparison.** Compare candidate output against an independent
    PyTorch/math oracle when practical. If a full oracle is expensive, at
-   minimum compare against the copied baseline plus targeted oracle rows.
+   minimum compare against the baseline plus targeted oracle rows.
 
 ## Defining a Regression Grid
 
@@ -38,9 +38,9 @@ Example:
 ```yaml
 regression_grid:
   shapes:
-    - [1, 64, 32, 32]      # small
-    - [4, 256, 16, 16]     # medium
-    - [1, 128, 20, 256, 256] # large
+    - [1, 64, 32, 32]
+    - [4, 256, 16, 16]
+    - [1, 128, 20, 256, 256]
   dtypes: [float16, bfloat16, float32]
   num_groups: [32]
   eps: [1e-5, 1e-6]
@@ -55,5 +55,5 @@ regression_grid:
 - Do not relax tolerances to make a failing candidate pass.
 - If the task records a stricter task-local tolerance in
   `docs/benchmark_method.md`, use the stricter value.
-- If evidence shows the upstream baseline itself exceeds a grid tolerance on
-  specific shapes, document it and adjust only that cell.
+- If evidence shows the baseline itself exceeds a grid tolerance on specific
+  shapes, document it and adjust only that cell.
