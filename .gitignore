@@ -1,0 +1,23 @@
+__pycache__/
+.pytest_cache/
+.humanize/
+.humanize-*/
+*.py[cod]
+*.egg-info/
+
+# GPU profiling and intermediate optimization artifacts.
+**/profile/
+**/profiles/
+**/ncu/
+**/ncu_reports/
+**/*.ncu-rep
+**/*.nsys-rep
+**/*.qdrep
+**/*.cubin
+**/*.fatbin
+
+# Build artifacts
+*.o
+*.so
+*.a
+build/

@@ -1,0 +1,29 @@
+# Task configuration template.
+# Copy this directory, rename it, and fill in the values below.
+
+[task]
+slug = "example_task"
+arch = "b200"                # target GPU architecture
+target_gpu = "NVIDIA B200"
+family = "example"           # kernel family name
+entry_points = [
+  # upstream callable(s) to copy as baseline, e.g.:
+  # "framework.module.kernel:entry_function",
+]
+
+[build]
+language = "cuda"            # cuda | triton | cutedsl
+destination_passing_style = true
+baseline_entry_point = "baseline/kernel.cu::example_baseline"
+candidate_entry_point = "solution/kernel.cu::example_candidate"
+
+[benchmark]
+warmup_runs = 10
+iterations = 200
+num_trials = 7
+inner_iterations_min = 1
+inner_iterations_max = 4096
+target_sample_us = 1000
+timeout_seconds = 600
+use_isolated_runner = true
+required_matched_ratio = 1.0
