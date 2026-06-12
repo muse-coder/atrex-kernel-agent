@@ -119,6 +119,54 @@ Do not finalize a no-go because the first candidate loses. A no-go needs
 baseline numbers, at least one reasoned candidate attempt, correctness status,
 benchmark evidence, and a named active bound or blocker.
 
+## Low-Level Assembly Analysis
+
+Every optimization round must include PTX/SASS static analysis.这不是可选步骤——
+每次修改 kernel 代码后，都必须重新生成 cubin 并检查寄存器用量、指令模式和
+编译器行为的变化。静态分析和 NCU 运行时 profiling 互补：NCU 告诉你"慢在
+哪"，汇编分析告诉你"编译器做了什么导致慢"。
+
+### Toolchain
+
+| Level | Command | Output | What to look for |
+|-------|---------|--------|------------------|
+| PTX | `nvcc -ptx -arch=sm_100a file.cu` | `.ptx` virtual assembly | Algorithm logic, instruction selection, loop structure |
+| Cubin | `nvcc -cubin -arch=sm_100a file.cu` | `.cubin` binary | Intermediate artifact for the tools below |
+| SASS | `cuobjdump -sass file.cubin` | Real machine code | Instruction scheduling, dual-issue pairing, register allocation |
+| Resources | `cuobjdump -res-usage file.cubin` | Register/shared mem usage | Occupancy bottleneck diagnosis |
+| Source map | `nvdisasm -gi file.cubin` | SASS + source line numbers | Locate which source line generates which instructions |
+| JIT .so | `cuobjdump -sass xxx.so` | SASS from shared library | FlashInfer JIT / AOT product analysis |
+
+Replace `sm_100a` with the actual target architecture (e.g. `sm_90a` for
+Hopper). The `-arch` flag must match the GPU being benchmarked.
+
+### Every Round Must Check
+
+- **Register pressure**: `cuobjdump -res-usage` shows register count per
+  kernel. If occupancy is limited by registers, inspect PTX/SASS to find
+  unnecessary live variables or spills to local memory (`STL`/`LDL` in SASS).
+- **Instruction mix**: `cuobjdump -sass` reveals actual issued instructions.
+  Check for unnecessary type conversions, redundant MOVs, missed constant
+  folding, or sub-optimal math sequences (e.g. full `DFMA` instead of `FFMA`).
+- **Dual-issue analysis**: In SASS output, look for instruction pairs that
+  could issue together but don't — often caused by register dependency chains.
+- **Shared memory bank conflicts**: `nvdisasm -gi` maps SASS loads/stores back
+  to source lines. Cross-reference with NCU's bank-conflict metrics to identify
+  the offending access pattern.
+- **Baseline comparison**: Generate SASS for both baseline and candidate to
+  compare instruction counts, loop unrolling, and memory access patterns
+  side-by-side.
+- **FlashInfer analysis**: Use `cuobjdump -sass` on the FlashInfer `.so` to
+  inspect the baseline's actual generated code when the source is not available
+  or when JIT compilation choices are unclear.
+
+### Recording
+
+When assembly analysis is performed, record findings in the round analysis
+file (`round-N-analysis.md`). Include: kernel name, register count, shared
+memory usage, key SASS patterns observed, and any actionable insight that
+informed the optimization direction.
+
 ## PR Scope
 
 After a kernel is optimized, the final commit must include only:

@@ -47,10 +47,25 @@ const ANALYSIS_SCHEMA = {
       type: 'string',
       description: 'The active performance bound: compute, memory-DRAM, memory-L2, memory-L1, or latency',
     },
+    assemblyInsights: {
+      type: 'object',
+      description: 'Low-level PTX/SASS analysis results. Only populated when assembly-level inspection was performed this round.',
+      properties: {
+        performed: { type: 'boolean', description: 'Whether assembly analysis was done this round' },
+        registerCount: { type: 'number', description: 'Registers per thread from cuobjdump -res-usage' },
+        sharedMemBytes: { type: 'number', description: 'Static shared memory in bytes' },
+        keyFindings: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Notable SASS/PTX patterns: spills, redundant conversions, missed dual-issue, bank conflicts, etc.',
+        },
+      },
+      required: ['performed'],
+    },
     progress: { enum: ['ADVANCED', 'STALLED', 'REGRESSED'] },
     verdict: { enum: ['CONTINUE', 'COMPLETE'] },
   },
-  required: ['issues', 'bottleneck', 'suggestions', 'rooflineEfficiency', 'activeBound', 'progress', 'verdict'],
+  required: ['issues', 'bottleneck', 'suggestions', 'rooflineEfficiency', 'activeBound', 'assemblyInsights', 'progress', 'verdict'],
 }
 
 const planFile = args.planFile
@@ -174,11 +189,28 @@ while (true) {
     '   - Identify the active bound (compute, memory-DRAM, memory-L2, memory-L1, latency)\n' +
     '4. Identify the #1 bottleneck — what specific code pattern or memory access pattern causes it\n' +
     '5. Suggest 2-3 optimization directions ranked by expected benefit and risk. Be SPECIFIC.\n\n' +
+    '## Part 3: Low-Level Assembly Analysis (MANDATORY every round)\n' +
+    'You MUST perform PTX/SASS static analysis every round. This is not optional — every optimization iteration needs instruction-level visibility.\n\n' +
+    'Commands (replace sm_100a with actual target arch):\n' +
+    '- PTX (algorithm logic, instruction selection): nvcc -ptx -arch=sm_100a file.cu\n' +
+    '- Cubin (binary for tools below): nvcc -cubin -arch=sm_100a file.cu\n' +
+    '- SASS (real machine code — scheduling, dual-issue, registers): cuobjdump -sass file.cubin\n' +
+    '- Resource usage (registers/shared mem — occupancy): cuobjdump -res-usage file.cubin\n' +
+    '- Source mapping (SASS + source line numbers): nvdisasm -gi file.cubin\n' +
+    '- JIT .so (FlashInfer baseline analysis): cuobjdump -sass xxx.so\n\n' +
+    'What to look for:\n' +
+    '- Register count vs occupancy limit — spills (STL/LDL in SASS) indicate register pressure\n' +
+    '- Redundant type conversions, unnecessary MOVs, missed constant folding\n' +
+    '- Instruction dependency chains blocking dual-issue\n' +
+    '- Shared memory bank conflict patterns (cross-reference with NCU metrics)\n' +
+    '- Compare baseline vs candidate SASS: instruction count, loop unrolling, memory access patterns\n\n' +
+    'Record assembly findings in the round analysis file. assemblyInsights is a REQUIRED field in your output.\n\n' +
     '## Write your full analysis to ' + rlcrDir + '/round-' + round + '-analysis.md\n\n' +
     '## Structured output notes:\n' +
     '- rooflineEfficiency: a number 0-100 representing (achieved / theoretical_peak) * 100 for the CANDIDATE kernel on the active bound metric\n' +
     '- progress: ADVANCED if this round improved over last, STALLED if no meaningful change, REGRESSED if worse\n' +
-    '- verdict: COMPLETE only if plan fully done AND correctness passes AND rooflineEfficiency >= ' + EFFICIENCY_TARGET + ' AND no P0/P1 issues. Otherwise CONTINUE.\n',
+    '- verdict: COMPLETE only if plan fully done AND correctness passes AND rooflineEfficiency >= ' + EFFICIENCY_TARGET + ' AND no P0/P1 issues. Otherwise CONTINUE.\n' +
+    '- assemblyInsights: populate when you performed PTX/SASS analysis this round. Set performed=true, include registerCount, sharedMemBytes, and keyFindings.\n',
     { label: 'analyst:r' + round, phase: 'Analyze', schema: ANALYSIS_SCHEMA }
   )
 
@@ -193,6 +225,13 @@ while (true) {
   log('Bottleneck: ' + analysis.bottleneck)
   if (analysis.suggestions.length > 0) {
     log('Next direction: ' + analysis.suggestions[0])
+  }
+  if (analysis.assemblyInsights && analysis.assemblyInsights.performed) {
+    var asmMsg = 'Assembly: regs=' + analysis.assemblyInsights.registerCount + ' smem=' + analysis.assemblyInsights.sharedMemBytes + 'B'
+    if (analysis.assemblyInsights.keyFindings && analysis.assemblyInsights.keyFindings.length > 0) {
+      asmMsg += ' | ' + analysis.assemblyInsights.keyFindings[0]
+    }
+    log(asmMsg)
   }
 
   // --- Stop condition 1: reached 90% of theoretical peak ---
