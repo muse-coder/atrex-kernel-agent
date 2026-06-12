@@ -12,8 +12,16 @@ Each task must end with two local implementations:
 - `solution/`: the optimized implementation exposed through the exact same
   task benchmark ABI.
 
-Record the baseline's origin (source file, version/commit if applicable) in
-`docs/baseline_source.md`.
+When the task prompt specifies a particular baseline, use that implementation.
+When no specific baseline is given, default to the corresponding FlashInfer
+kernel as the reference implementation. FlashInfer must be pre-installed in
+the environment (see README for installation).
+
+Record the baseline's origin in `docs/baseline_source.md`:
+- source: FlashInfer (default) or other specified implementation
+- version / commit
+- the exact function or kernel entry point used
+- any local modifications made to adapt the ABI
 
 If the baseline kernel is CUDA/C++ CUDA, the baseline and the optimized
 candidate must use the same local registration/export/build style. Do not
