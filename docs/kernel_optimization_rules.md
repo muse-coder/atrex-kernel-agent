@@ -14,8 +14,9 @@ Each task must end with two local implementations:
 
 When the task prompt specifies a particular baseline, use that implementation.
 When no specific baseline is given, default to the corresponding FlashInfer
-kernel as the reference implementation. FlashInfer must be pre-installed in
-the environment (see README for installation).
+kernel as the reference implementation. FlashInfer must be built from the
+latest source (not a pre-built wheel) so the baseline reflects the strongest
+available implementation. See README for build instructions.
 
 Record the baseline's origin in `docs/baseline_source.md`:
 - source: FlashInfer (default) or other specified implementation

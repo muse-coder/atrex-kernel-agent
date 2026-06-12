@@ -42,11 +42,15 @@ external/                      知识子模块（可选）
 git clone <repo-url> && cd IterKernel
 git submodule update --init --recursive
 
-# 安装 FlashInfer（默认 baseline 来源，未指定其他 baseline 时使用）
-pip install flashinfer -i https://flashinfer.ai/whl/cu124/torch2.6/
+# 安装 FlashInfer（默认 baseline 来源，必须从源码编译最新版）
+git clone https://github.com/flashinfer-ai/flashinfer.git --recursive
+cd flashinfer
+pip install -e . -v
+cd ..
 ```
 
-FlashInfer 的安装命令视 CUDA / PyTorch 版本而定,具体见
+**必须从源码编译最新 main 分支**,不要用 pip 预编译 wheel——预编译版本往往
+落后于最新优化,作为 baseline 不够强。编译要求见
 [FlashInfer 安装文档](https://docs.flashinfer.ai/installation.html)。
 
 ## 快速开始
