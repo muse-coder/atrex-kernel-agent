@@ -3,6 +3,48 @@
 These rules apply to every kernel optimization task. They establish the
 guardrails that keep the optimization loop honest and reproducible.
 
+## Implementation Language And Abstraction Level
+
+The optimized kernel (solution/) must be written in **CUDA C++**. Do not use
+Triton, CuTe DSL, or any other high-level kernel DSL for the candidate
+implementation.
+
+Use the most primitive control constructs available to CUDA:
+
+- **PTX inline assembly** (`asm volatile`) for hardware-specific operations:
+  `cp.async.bulk` (TMA), `wgmma.mma_async` / `tcgen05.mma`, `mbarrier`,
+  `fence.proxy.async`, `setmaxnreg`, named barriers (`bar.sync`), etc.
+- **Thin wrappers** over PTX are acceptable — one inline function per PTX
+  instruction, no state, no abstraction. DeepGEMM-style, not CUTLASS-style.
+- **Do not use** CUTLASS Collective/Builder/Pipeline abstractions, CuTe layout
+  algebra, or any multi-layer template framework that hides the actual hardware
+  instructions behind compile-time dispatch.
+
+Why: heavily abstracted frameworks make it impossible to reason about what
+the hardware actually executes. When each PTX instruction is visible in the
+source, the theorist can predict performance, the analyst can match NCU
+metrics to specific code, and the coder can make targeted changes. Layers
+of templates break this visibility.
+
+Acceptable thin wrappers (examples):
+```cuda
+__device__ void tma_load(void* smem, uint64_t* mbar, ...) {
+    asm volatile("cp.async.bulk.tensor.2d.shared::cluster.global.mbarrier..."
+                 : : "r"(...), "l"(...) : "memory");
+}
+```
+
+Not acceptable (CUTLASS-style):
+```cpp
+using CollectiveMainloop = cutlass::gemm::collective::CollectiveMma<...>;
+CollectiveMainloop collective;
+collective(accum, tCrA, tCrB, ...);  // what PTX does this emit? unclear
+```
+
+The baseline may use any implementation (FlashInfer, CUTLASS, Triton) for
+comparison, but the optimized candidate must be raw CUDA C++ with visible
+PTX-level control.
+
 ## Baseline And Candidate Pairing
 
 Each task must end with two local implementations:

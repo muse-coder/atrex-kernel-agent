@@ -20,6 +20,12 @@
 
 如果 kernel 类型不明确，直接问用户。
 
+**实现约束**：优化后的 kernel 必须是 **CUDA C++**，底层使用 PTX inline
+assembly 直接操控硬件（TMA、WGMMA/UMMA、mbarrier、fence 等）。不用
+CUTLASS/CuTe 等多层模板抽象，只允许 DeepGEMM 风格的薄封装（一个 inline
+函数对应一条 PTX 指令）。Baseline 可以是任何实现（FlashInfer、CUTLASS 等），
+但 solution/ 必须是原始 CUDA。
+
 ### 2. 创建任务
 
 ```bash
@@ -54,9 +60,44 @@ Workflow({
 })
 ```
 
-Workflow 自动循环 Coder + Analyst subagent，直到：
+Workflow 用**三个 agent 分工协作**执行渐进式模块化优化：
+
+**Coder agent** — 读取 Analyst 的方向文档 → 修改 CUDA 代码（聚焦当前目标模块，
+但如果优化需要联动修改其他位置以通过编译/正确性测试，允许最小范围的外部改动）
+→ 跑 correctness + benchmark。不跑 NCU，不做性能分析。
+
+**Profiler agent** — 跑 NCU（`--set full`、`--set source`）、导出 cubin、
+`cuobjdump -res-usage`、`cuobjdump -sass`、`nvcc -ptx`。纯数据采集，不分析
+数据，不改代码。
+
+**Analyst agent** — 读取 Profiler 导出的 NCU 指标 + PTX/SASS + CUDA 源码 →
+性能分析（瓶颈定位、theory vs actual 归因、PTX/SASS 深度分析）→ 列举问题 →
+写出按轮次保存的优化方向文档 `round-N-direction.md`，供 Coder 下一轮读取。
+
+信息流：`Coder → Profiler → Analyst → round-N-direction.md → Coder`
+
+流程：
+1. **Round 0 — 初始实现**
+   - **Profiler** 跑 baseline（FlashInfer/CUTLASS 等）的 NCU + PTX/SASS
+   - **Analyst** 深度分析 baseline 性能 → 设计新 kernel 架构（tile size、
+     pipeline 结构、smem layout、PTX 指令选择）→ 写完整的架构设计文档
+   - **Coder** 按架构设计**从头实现完整 CUDA kernel**（不是在 baseline 上改）
+   - **Profiler** 对新 kernel 跑 NCU + PTX/SASS
+   - **Analyst** 分析新 kernel → 分解模块（插 MODULE 标记）→ 对比 baseline →
+     设计全局优化策略 + 写首份 round-0-direction.md
+2. **Module Loop** — 对每个模块循环（最多 15 轮/模块），每轮三步：
+   - **Coder**: 读 round-N-direction.md → 实现优化 → correctness + benchmark
+   - **Profiler**: 对新版本跑 NCU + 导出 cubin/PTX/SASS
+   - **Analyst**: 读 Profiler 数据 + Coder 改动 + kernel 源码 → theory vs actual
+     归因 → 写新 round-(N+1)-direction.md（含问题清单 + 下一步方向）
+3. **Integration** — 每个模块完成后 Profiler 跑全 kernel profile，Analyst 做
+   集成分析，回退时做 NCU + PTX/SASS 诊断
+4. **Finalize** — per-module contribution breakdown + 理论准确度总结
+
+停止条件：
 - **roofline efficiency ≥ 90%** → 优化成功
-- **连续 50 轮无进展** → 停止
+- **单模块连续 5 轮无进展** → 跳到下一模块
+- **所有模块完成** → 输出最终报告
 
 ### 5. 报告结果
 
