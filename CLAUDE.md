@@ -21,10 +21,12 @@
 如果 kernel 类型不明确，直接问用户。
 
 **实现约束**：优化后的 kernel 必须是 **CUDA C++**，底层使用 PTX inline
-assembly 直接操控硬件（TMA、WGMMA/UMMA、mbarrier、fence 等）。不用
-CUTLASS/CuTe 等多层模板抽象，只允许 DeepGEMM 风格的薄封装（一个 inline
-函数对应一条 PTX 指令）。Baseline 可以是任何实现（FlashInfer、CUTLASS 等），
-但 solution/ 必须是原始 CUDA。
+assembly 直接操控硬件（TMA、WGMMA/UMMA、mbarrier、fence 等）。优先使用
+DeepGEMM 风格的薄封装（一个 inline 函数对应一条 PTX 指令），尽量不用
+CUTLASS/CuTe 等多层模板抽象。但如果从零实现某些功能确实过于复杂（如复杂的
+epilogue fusion、多阶段 pipeline 编排等），允许选择性使用 CUTLASS/CuTe 的
+部分模板来简化实现，但需在 `docs/draft.md` 中记录使用理由。Baseline 可以是
+任何实现（FlashInfer、CUTLASS 等）。
 
 ### 2. 创建任务
 

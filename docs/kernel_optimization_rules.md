@@ -6,27 +6,31 @@ guardrails that keep the optimization loop honest and reproducible.
 ## Implementation Language And Abstraction Level
 
 The optimized kernel (solution/) must be written in **CUDA C++**. Do not use
-Triton, CuTe DSL, or any other high-level kernel DSL for the candidate
-implementation.
+Triton or any other high-level kernel DSL for the candidate implementation.
 
-Use the most primitive control constructs available to CUDA:
+Prefer the most primitive control constructs available to CUDA:
 
 - **PTX inline assembly** (`asm volatile`) for hardware-specific operations:
   `cp.async.bulk` (TMA), `wgmma.mma_async` / `tcgen05.mma`, `mbarrier`,
   `fence.proxy.async`, `setmaxnreg`, named barriers (`bar.sync`), etc.
 - **Thin wrappers** over PTX are acceptable — one inline function per PTX
   instruction, no state, no abstraction. DeepGEMM-style, not CUTLASS-style.
-- **Do not use** CUTLASS Collective/Builder/Pipeline abstractions, CuTe layout
-  algebra, or any multi-layer template framework that hides the actual hardware
-  instructions behind compile-time dispatch.
+- **Prefer not to use** CUTLASS Collective/Builder/Pipeline abstractions or
+  CuTe layout algebra. However, if implementing certain functionality from
+  scratch is genuinely too complex (e.g. complex epilogue fusion, multi-stage
+  pipeline orchestration, advanced layout transformations), selectively using
+  CUTLASS/CuTe templates is allowed. When doing so, document the rationale
+  in `docs/draft.md` — explain what was too complex to rewrite and why the
+  CUTLASS/CuTe component was chosen.
 
-Why: heavily abstracted frameworks make it impossible to reason about what
-the hardware actually executes. When each PTX instruction is visible in the
-source, the theorist can predict performance, the analyst can match NCU
-metrics to specific code, and the coder can make targeted changes. Layers
-of templates break this visibility.
+Why this preference: heavily abstracted frameworks make it harder to reason
+about what the hardware actually executes. When each PTX instruction is
+visible in the source, the analyst can match NCU metrics to specific code,
+and the coder can make targeted changes. But pragmatism matters — if a raw
+implementation would take disproportionate effort for marginal visibility
+gain, use the library and move on.
 
-Acceptable thin wrappers (examples):
+Preferred (thin wrappers):
 ```cuda
 __device__ void tma_load(void* smem, uint64_t* mbar, ...) {
     asm volatile("cp.async.bulk.tensor.2d.shared::cluster.global.mbarrier..."
@@ -34,16 +38,15 @@ __device__ void tma_load(void* smem, uint64_t* mbar, ...) {
 }
 ```
 
-Not acceptable (CUTLASS-style):
+Use with caution (CUTLASS-style — only when raw implementation is impractical):
 ```cpp
 using CollectiveMainloop = cutlass::gemm::collective::CollectiveMma<...>;
 CollectiveMainloop collective;
-collective(accum, tCrA, tCrB, ...);  // what PTX does this emit? unclear
+collective(accum, tCrA, tCrB, ...);  // PTX visibility is reduced
 ```
 
 The baseline may use any implementation (FlashInfer, CUTLASS, Triton) for
-comparison, but the optimized candidate must be raw CUDA C++ with visible
-PTX-level control.
+comparison.
 
 ## Baseline And Candidate Pairing
 
