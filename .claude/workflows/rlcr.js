@@ -128,6 +128,8 @@ var SKILL_NOTE =
   'If external/KernelWiki/SKILL.md exists, read it for architecture-specific techniques.\n' +
   'If external/ncu-report-skill/SKILL.md exists, follow its profiling methodology.\n\n'
 
+// NCU_SKILL_PREAMBLE removed — profiler prompts now contain exact commands inline
+
 // ============================================================
 // Setup
 // ============================================================
@@ -154,32 +156,22 @@ phase('Profile')
 log('Profiler: baseline NCU + PTX/SASS export')
 
 await agent(
-  'You are a GPU profiling engineer. Your ONLY job is to run profiling tools and export data to files. You do NOT analyze the data or modify kernel code.\n\n' +
-  RULES_PREAMBLE + SKILL_NOTE +
-  '## Tasks:\n\n' +
-  '### 1. Identify the baseline kernel\n' +
-  'Read ' + rlcrDir + '/plan.md to understand what kernel to profile.\n' +
-  'The baseline is in baseline/ (could be FlashInfer, CUTLASS, or any reference implementation).\n\n' +
-  '### 2. Run NCU full profile on baseline\n' +
-  'Pick an idle GPU (nvidia-smi). Run:\n' +
-  '  ncu --set full --export ' + rlcrDir + '/profiles/baseline-full <baseline_kernel_command>\n' +
-  'Also run source-level profiling:\n' +
-  '  ncu --set source --section SourceCounters --export ' + rlcrDir + '/profiles/baseline-source <baseline_kernel_command>\n\n' +
-  '### 3. Export PTX/SASS/resource data from baseline\n' +
-  'If the baseline is a .so or precompiled binary:\n' +
-  '  cuobjdump -res-usage <baseline_binary> > ' + rlcrDir + '/profiles/baseline-res-usage.txt\n' +
-  '  cuobjdump -sass <baseline_binary> > ' + rlcrDir + '/profiles/baseline-sass.txt\n' +
-  'If the baseline is CUDA source:\n' +
-  '  nvcc -cubin -lineinfo -arch=<target_arch> <source_file> -o ' + rlcrDir + '/profiles/baseline.cubin\n' +
-  '  nvcc -ptx -arch=<target_arch> <source_file> -o ' + rlcrDir + '/profiles/baseline.ptx\n' +
-  '  cuobjdump -res-usage ' + rlcrDir + '/profiles/baseline.cubin > ' + rlcrDir + '/profiles/baseline-res-usage.txt\n' +
-  '  cuobjdump -sass ' + rlcrDir + '/profiles/baseline.cubin > ' + rlcrDir + '/profiles/baseline-sass.txt\n\n' +
-  '### 4. Run baseline benchmark\n' +
-  '  python bench/correctness.py\n' +
-  '  python bench/benchmark.py\n\n' +
-  '### 5. Write data manifest\n' +
-  'Write ' + rlcrDir + '/profiles/baseline-manifest.md listing all exported files and their contents.\n\n' +
-  '## IMPORTANT: Do NOT interpret or analyze the data. Just export it cleanly.\n',
+  'You are a GPU profiling engineer. Read ' + rlcrDir + '/plan.md for shapes and baseline info, then run EXACTLY these commands.\n\n' +
+  '## 1. Write runner\n' +
+  'Write ' + rlcrDir + '/profiles/ncu_baseline_runner.py — a minimal script that:\n' +
+  '  import torch; create inputs per plan.md shapes; 3x warmup; 1x call; torch.cuda.synchronize()\n\n' +
+  '## 2. Discover kernel name\n' +
+  'ncu --print-summary per-kernel -c 1 python ' + rlcrDir + '/profiles/ncu_baseline_runner.py\n\n' +
+  '## 3. Profile (ONE command)\n' +
+  'ncu --set full --section PmSampling --section PmSampling_WarpStates --section SourceCounters \\\n' +
+  '  -k "regex:<KERNEL_NAME>" -c 1 -o ' + rlcrDir + '/profiles/baseline \\\n' +
+  '  python ' + rlcrDir + '/profiles/ncu_baseline_runner.py\n\n' +
+  '## 4. Export (ONE command)\n' +
+  'ncu --import ' + rlcrDir + '/profiles/baseline.ncu-rep --page details > ' + rlcrDir + '/profiles/baseline-details.txt\n\n' +
+  '## 5. Benchmark\n' +
+  'python bench/benchmark.py --device cuda:0\n\n' +
+  'Write ' + rlcrDir + '/profiles/baseline-manifest.md listing files created.\n' +
+  'Do NOT analyze the data. Do NOT run any other ncu commands.\n',
   { label: 'profiler:baseline', phase: 'Profile' }
 )
 
@@ -198,11 +190,11 @@ await agent(
   '- If docs/module_decomposition_guide.md exists, use as reference.\n\n' +
   '## Profiler data (already exported — read these files):\n' +
   '- ' + rlcrDir + '/profiles/baseline-manifest.md\n' +
-  '- ' + rlcrDir + '/profiles/baseline-res-usage.txt\n' +
-  '- ' + rlcrDir + '/profiles/baseline-sass.txt\n' +
+  '- ' + rlcrDir + '/profiles/baseline-res-usage.txt (if available)\n' +
+  '- ' + rlcrDir + '/profiles/baseline-sass.txt (if available)\n' +
   '- ' + rlcrDir + '/profiles/baseline.ptx (if available)\n' +
-  '- NCU reports: ncu -i ' + rlcrDir + '/profiles/baseline-full.ncu-rep --csv\n' +
-  '- Source-level: ncu -i ' + rlcrDir + '/profiles/baseline-source.ncu-rep --page source\n\n' +
+  '- ' + rlcrDir + '/profiles/baseline-details.txt (NCU full details export)\n' +
+  '- NCU report: ncu -i ' + rlcrDir + '/profiles/baseline.ncu-rep --csv\n\n' +
   '## Job 1: Baseline Analysis\n' +
   'Analyze the baseline kernel\'s performance:\n' +
   '- Primary bound (compute/memory/latency/barrier) — cite NCU metrics\n' +
@@ -265,6 +257,19 @@ await agent(
   'from scratch based on the Analyst\'s architecture design.\n\n' +
   'This is NOT incremental optimization — you are writing the full kernel for the first time.\n\n' +
   RULES_PREAMBLE +
+  '## FORBIDDEN — using ANY of these is a hard failure:\n' +
+  '- #include "cutlass/*.h" or #include "cute/*.hpp" (except cutlass/numeric_types.h)\n' +
+  '- cutlass::gemm::collective::CollectiveBuilder\n' +
+  '- cutlass::gemm::kernel::GemmUniversal\n' +
+  '- cutlass::gemm::device::GemmUniversalAdapter\n' +
+  '- cutlass::epilogue::collective::CollectiveBuilder\n' +
+  '- using namespace cute\n' +
+  '- Any CuTe layout algebra (make_layout, make_tensor, etc.)\n' +
+  'If you include ANY CUTLASS/CuTe header beyond numeric_types.h, the build will be rejected.\n\n' +
+  '## Reference implementation style:\n' +
+  'If external/KernelWiki/SKILL.md exists, read it — especially the DeepGEMM kernel page.\n' +
+  'Follow DeepGEMM style: one thin inline function per PTX instruction.\n' +
+  'SM120 (Blackwell desktop) uses `mma.sync.aligned` PTX — NOT `tcgen05.mma` (SM100 datacenter only).\n\n' +
   '## Read these files FIRST:\n' +
   '- Architecture design: ' + rlcrDir + '/direction.md\n' +
   '- Detailed architecture: ' + rlcrDir + '/kernel-architecture.md\n' +
@@ -274,7 +279,6 @@ await agent(
   '- Write CUDA C++ only — no Triton, no CuTe DSL\n' +
   '- Use raw PTX inline assembly for hardware ops (TMA, WGMMA/UMMA, mbarrier, fence)\n' +
   '- Thin wrappers only (one inline function = one PTX instruction, DeepGEMM style)\n' +
-  '- Do NOT use CUTLASS Collective/Builder/Pipeline abstractions or CuTe layout algebra\n' +
   '- Insert // MODULE: <id> BEGIN/END markers as specified in direction.md\n' +
   '- Write the kernel in solution/\n\n' +
   '## Tasks:\n' +
@@ -301,23 +305,25 @@ phase('Profile')
 log('Profiler: profile the newly implemented kernel')
 
 await agent(
-  'You are a GPU profiling engineer. Your ONLY job is to run profiling tools and export data.\n\n' +
-  SKILL_NOTE +
-  '## How to run the kernel\n' +
-  'Read ' + rlcrDir + '/plan.md to understand the kernel.\n' +
-  'The benchmark script bench/benchmark.py shows how to launch the kernel — use the same command for NCU.\n\n' +
-  '## Tasks:\n\n' +
-  '1. Run NCU full profile on the NEW kernel in solution/:\n' +
-  '   ncu --set full --export ' + rlcrDir + '/profiles/initial-full <candidate_kernel_command>\n' +
-  '   ncu --set source --section SourceCounters --export ' + rlcrDir + '/profiles/initial-source <candidate_kernel_command>\n\n' +
-  '2. Compile and export cubin/PTX from solution/ source:\n' +
-  '   nvcc -cubin -lineinfo -arch=<target_arch> <solution_source> -o ' + rlcrDir + '/profiles/initial.cubin\n' +
-  '   nvcc -ptx -arch=<target_arch> <solution_source> -o ' + rlcrDir + '/profiles/initial.ptx\n\n' +
-  '3. Extract SASS and resource usage:\n' +
-  '   cuobjdump -res-usage ' + rlcrDir + '/profiles/initial.cubin > ' + rlcrDir + '/profiles/initial-res-usage.txt\n' +
-  '   cuobjdump -sass ' + rlcrDir + '/profiles/initial.cubin > ' + rlcrDir + '/profiles/initial-sass.txt\n\n' +
-  '4. Write ' + rlcrDir + '/profiles/initial-manifest.md listing all exported files.\n\n' +
-  '## IMPORTANT: Do NOT analyze. Just export data.\n',
+  'You are a GPU profiling engineer. Read ' + rlcrDir + '/plan.md and config.toml for shapes/arch. Run EXACTLY these commands.\n\n' +
+  '## 1. Write candidate runner\n' +
+  'Write ' + rlcrDir + '/profiles/ncu_candidate_runner.py — same pattern as ncu_baseline_runner.py but calling candidate from solution/.\n\n' +
+  '## 2. Discover kernel name\n' +
+  'ncu --print-summary per-kernel -c 1 python ' + rlcrDir + '/profiles/ncu_candidate_runner.py\n\n' +
+  '## 3. Profile (ONE command)\n' +
+  'ncu --set full --section PmSampling --section PmSampling_WarpStates --section SourceCounters \\\n' +
+  '  -k "regex:<KERNEL_NAME>" -c 1 -o ' + rlcrDir + '/profiles/initial \\\n' +
+  '  python ' + rlcrDir + '/profiles/ncu_candidate_runner.py\n\n' +
+  '## 4. Export (ONE command)\n' +
+  'ncu --import ' + rlcrDir + '/profiles/initial.ncu-rep --page details > ' + rlcrDir + '/profiles/initial-details.txt\n\n' +
+  '## 5. SASS/PTX dump\n' +
+  'Find .cu source in solution/. Read config.toml for arch (e.g. sm_120).\n' +
+  'nvcc -cubin -lineinfo -arch=sm_<ARCH> <source.cu> -o ' + rlcrDir + '/profiles/initial.cubin\n' +
+  'nvcc -ptx -arch=sm_<ARCH> <source.cu> -o ' + rlcrDir + '/profiles/initial.ptx\n' +
+  'cuobjdump -res-usage ' + rlcrDir + '/profiles/initial.cubin > ' + rlcrDir + '/profiles/initial-res-usage.txt\n' +
+  'cuobjdump -sass ' + rlcrDir + '/profiles/initial.cubin > ' + rlcrDir + '/profiles/initial-sass.txt\n\n' +
+  'Write ' + rlcrDir + '/profiles/initial-manifest.md listing files created.\n' +
+  'Do NOT analyze the data. Do NOT run any other ncu commands.\n',
   { label: 'profiler:initial', phase: 'Profile' }
 )
 
@@ -338,12 +344,13 @@ var r0analysis = await agent(
   '- ' + rlcrDir + '/profiles/initial-res-usage.txt\n' +
   '- ' + rlcrDir + '/profiles/initial-sass.txt\n' +
   '- ' + rlcrDir + '/profiles/initial.ptx\n' +
-  '- ncu -i ' + rlcrDir + '/profiles/initial-full.ncu-rep --csv\n' +
-  '- ncu -i ' + rlcrDir + '/profiles/initial-source.ncu-rep --page source\n\n' +
+  '- ' + rlcrDir + '/profiles/initial-details.txt (NCU full details export)\n' +
+  '- ncu -i ' + rlcrDir + '/profiles/initial.ncu-rep --csv\n\n' +
   '## Baseline profiler data (for comparison):\n' +
-  '- ' + rlcrDir + '/profiles/baseline-res-usage.txt\n' +
-  '- ' + rlcrDir + '/profiles/baseline-sass.txt\n' +
-  '- ncu -i ' + rlcrDir + '/profiles/baseline-full.ncu-rep --csv\n\n' +
+  '- ' + rlcrDir + '/profiles/baseline-res-usage.txt (if available)\n' +
+  '- ' + rlcrDir + '/profiles/baseline-sass.txt (if available)\n' +
+  '- ' + rlcrDir + '/profiles/baseline-details.txt\n' +
+  '- ncu -i ' + rlcrDir + '/profiles/baseline.ncu-rep --csv\n\n' +
   '## Job 1: Verify Module Decomposition\n' +
   'Read the kernel source in solution/. Verify // MODULE: <id> BEGIN/END markers exist.\n' +
   'If missing or incorrect, insert them based on sync points, warp-role branches, functional phases.\n' +
@@ -435,6 +442,15 @@ for (var modIdx = 0; modIdx < moduleOrder.length; modIdx++) {
     await agent(
       'You are a GPU kernel optimization engineer. Your ONLY job is to read the direction document, implement the proposed optimization in CUDA C++, and verify correctness.\n\n' +
       RULES_PREAMBLE +
+      '## FORBIDDEN — using ANY of these is a hard failure:\n' +
+      '- #include "cutlass/*.h" or #include "cute/*.hpp" (except cutlass/numeric_types.h)\n' +
+      '- cutlass::gemm::collective::CollectiveBuilder\n' +
+      '- cutlass::gemm::kernel::GemmUniversal\n' +
+      '- cutlass::gemm::device::GemmUniversalAdapter\n' +
+      '- cutlass::epilogue::collective::CollectiveBuilder\n' +
+      '- using namespace cute\n' +
+      '- Any CuTe layout algebra (make_layout, make_tensor, etc.)\n' +
+      'If you include ANY CUTLASS/CuTe header beyond numeric_types.h, the build will be rejected.\n\n' +
       '## Read the direction document FIRST:\n' +
       rlcrDir + '/modules/' + moduleId + '/round-' + moduleRound + '-direction.md\n\n' +
       'This document tells you:\n' +
@@ -455,7 +471,6 @@ for (var modIdx = 0; modIdx < moduleOrder.length; modIdx++) {
       '- Write CUDA C++ only — no Triton, no CuTe DSL\n' +
       '- Use raw PTX inline assembly for hardware ops (TMA, WGMMA/UMMA, mbarrier, fence)\n' +
       '- Thin wrappers only (one inline function = one PTX instruction, DeepGEMM style)\n' +
-      '- Do NOT use CUTLASS Collective/Builder/Pipeline abstractions or CuTe layout algebra\n' +
       '- Focus on module // MODULE: ' + moduleId + ' BEGIN … END — this is the optimization target.\n' +
       '  You MAY touch code outside that module when necessary for compilation or correctness\n' +
       '  (e.g. shared data layout changes, type signature adjustments, header includes),\n' +
@@ -487,26 +502,22 @@ for (var modIdx = 0; modIdx < moduleOrder.length; modIdx++) {
     var profileDir = rlcrDir + '/profiles/' + moduleId + '-r' + moduleRound
 
     await agent(
-      'You are a GPU profiling engineer. Your ONLY job is to run profiling tools and export data. Do NOT analyze data or modify code.\n\n' +
-      SKILL_NOTE +
-      '## How to run the kernel\n' +
-      'Read ' + rlcrDir + '/plan.md to understand the kernel and workloads.\n' +
-      'The benchmark script is bench/benchmark.py — look at how it launches the kernel.\n' +
-      'Use the same launch command for NCU profiling (wrap with ncu).\n\n' +
-      '## Tasks:\n\n' +
-      '1. mkdir -p ' + profileDir + '\n\n' +
-      '2. Run NCU full profile on the CANDIDATE kernel:\n' +
-      '   ncu --set full --export ' + profileDir + '/candidate-full <kernel_command>\n\n' +
-      '3. Run NCU source-level profile:\n' +
-      '   ncu --set source --section SourceCounters --export ' + profileDir + '/candidate-source <kernel_command>\n\n' +
-      '4. Compile and export cubin/PTX:\n' +
-      '   nvcc -cubin -lineinfo -arch=<target_arch> ' + moduleMeta.sourceFile + ' -o ' + profileDir + '/candidate.cubin\n' +
-      '   nvcc -ptx -arch=<target_arch> ' + moduleMeta.sourceFile + ' -o ' + profileDir + '/candidate.ptx\n\n' +
-      '5. Extract SASS and resource usage:\n' +
-      '   cuobjdump -res-usage ' + profileDir + '/candidate.cubin > ' + profileDir + '/candidate-res-usage.txt\n' +
-      '   cuobjdump -sass ' + profileDir + '/candidate.cubin > ' + profileDir + '/candidate-sass.txt\n\n' +
-      '6. Write ' + profileDir + '/manifest.md listing all exported files.\n\n' +
-      '## IMPORTANT: Do NOT interpret the data. Just run the tools and save the output.\n',
+      'You are a GPU profiling engineer. Run EXACTLY these commands.\n\n' +
+      'mkdir -p ' + profileDir + '\n\n' +
+      '## 1. Profile (ONE command)\n' +
+      'ncu --set full --section PmSampling --section PmSampling_WarpStates --section SourceCounters \\\n' +
+      '  -k "regex:<KERNEL_NAME>" -c 1 -o ' + profileDir + '/candidate \\\n' +
+      '  python ' + rlcrDir + '/profiles/ncu_candidate_runner.py\n' +
+      'Use the kernel name from previous profiler runs. If unknown, run ncu --print-summary per-kernel -c 1 first.\n\n' +
+      '## 2. Export (ONE command)\n' +
+      'ncu --import ' + profileDir + '/candidate.ncu-rep --page details > ' + profileDir + '/candidate-details.txt\n\n' +
+      '## 3. SASS dump\n' +
+      'Read config.toml for arch. Source: ' + moduleMeta.sourceFile + '\n' +
+      'nvcc -cubin -lineinfo -arch=sm_<ARCH> ' + moduleMeta.sourceFile + ' -o ' + profileDir + '/candidate.cubin\n' +
+      'cuobjdump -res-usage ' + profileDir + '/candidate.cubin > ' + profileDir + '/candidate-res-usage.txt\n' +
+      'cuobjdump -sass ' + profileDir + '/candidate.cubin > ' + profileDir + '/candidate-sass.txt\n\n' +
+      'Write ' + profileDir + '/manifest.md listing files created.\n' +
+      'Do NOT analyze the data. Do NOT run any other ncu commands.\n',
       { label: 'profiler:' + moduleId + ':r' + moduleRound, phase: 'Profile' }
     )
 
@@ -533,20 +544,20 @@ for (var modIdx = 0; modIdx < moduleOrder.length; modIdx++) {
       '- ' + profileDir + '/manifest.md\n' +
       '- ' + profileDir + '/candidate-res-usage.txt\n' +
       '- ' + profileDir + '/candidate-sass.txt\n' +
-      '- ' + profileDir + '/candidate.ptx\n' +
-      '- ncu -i ' + profileDir + '/candidate-full.ncu-rep --csv\n\n' +
+      '- ' + profileDir + '/candidate-details.txt (NCU full details export)\n' +
+      '- ncu -i ' + profileDir + '/candidate.ncu-rep --csv\n\n' +
       '### Previous round (for theory-vs-actual delta — what THIS round\'s change achieved):\n' +
       (moduleRound > 0
         ? '- ' + rlcrDir + '/profiles/' + moduleId + '-r' + (moduleRound - 1) + '/candidate-res-usage.txt\n' +
           '- ' + rlcrDir + '/profiles/' + moduleId + '-r' + (moduleRound - 1) + '/candidate-sass.txt\n' +
-          '- ' + rlcrDir + '/profiles/' + moduleId + '-r' + (moduleRound - 1) + '/candidate.ptx\n' +
-          '- ncu -i ' + rlcrDir + '/profiles/' + moduleId + '-r' + (moduleRound - 1) + '/candidate-full.ncu-rep --csv\n\n'
+          '- ' + rlcrDir + '/profiles/' + moduleId + '-r' + (moduleRound - 1) + '/candidate-details.txt\n' +
+          '- ncu -i ' + rlcrDir + '/profiles/' + moduleId + '-r' + (moduleRound - 1) + '/candidate.ncu-rep --csv\n\n'
         : '- (Round 0: no previous round, use original baseline below)\n\n') +
       '### Original baseline (for overall progress tracking):\n' +
-      '- ' + rlcrDir + '/profiles/baseline-res-usage.txt\n' +
-      '- ' + rlcrDir + '/profiles/baseline-sass.txt\n' +
-      '- ' + rlcrDir + '/profiles/baseline.ptx\n' +
-      '- ncu -i ' + rlcrDir + '/profiles/baseline-full.ncu-rep --csv\n\n' +
+      '- ' + rlcrDir + '/profiles/baseline-res-usage.txt (if available)\n' +
+      '- ' + rlcrDir + '/profiles/baseline-details.txt\n' +
+      '- ' + rlcrDir + '/profiles/baseline.ptx (if available)\n' +
+      '- ncu -i ' + rlcrDir + '/profiles/baseline.ncu-rep --csv\n\n' +
       '## Analysis tasks:\n\n' +
       '### A) Scope Check\n' +
       'The optimization FOCUS must be module // MODULE: ' + moduleId + ' BEGIN … END.\n' +
@@ -703,28 +714,29 @@ for (var modIdx = 0; modIdx < moduleOrder.length; modIdx++) {
     phase('Profile')
     log('Integration profiling for module ' + moduleId)
 
+    var integrationDir = rlcrDir + '/profiles/' + moduleId + '-integration'
+
     await agent(
-      'You are a GPU profiling engineer. Run integration profiling after module "' + moduleId + '" completed.\n\n' +
-      SKILL_NOTE +
-      '## How to run the kernel\n' +
-      'Read ' + rlcrDir + '/plan.md for kernel info.\n' +
-      'Use bench/benchmark.py to determine the launch command for NCU.\n\n' +
-      '## Tasks:\n\n' +
-      '1. mkdir -p ' + rlcrDir + '/profiles/' + moduleId + '-integration\n\n' +
-      '2. Run NCU full profile:\n' +
-      '   ncu --set full --export ' + rlcrDir + '/profiles/' + moduleId + '-integration/integration-full <kernel_command>\n\n' +
-      '3. Run NCU source-level profile:\n' +
-      '   ncu --set source --section SourceCounters --export ' + rlcrDir + '/profiles/' + moduleId + '-integration/integration-source <kernel_command>\n\n' +
-      '4. Compile and export cubin/PTX from solution/ source (' + moduleMeta.sourceFile + '):\n' +
-      '   nvcc -cubin -lineinfo -arch=<target_arch> ' + moduleMeta.sourceFile + ' -o ' + rlcrDir + '/profiles/' + moduleId + '-integration/integration.cubin\n' +
-      '   nvcc -ptx -arch=<target_arch> ' + moduleMeta.sourceFile + ' -o ' + rlcrDir + '/profiles/' + moduleId + '-integration/integration.ptx\n\n' +
-      '5. Extract SASS and resource usage:\n' +
-      '   cuobjdump -res-usage ' + rlcrDir + '/profiles/' + moduleId + '-integration/integration.cubin > ' + rlcrDir + '/profiles/' + moduleId + '-integration/integration-res-usage.txt\n' +
-      '   cuobjdump -sass ' + rlcrDir + '/profiles/' + moduleId + '-integration/integration.cubin > ' + rlcrDir + '/profiles/' + moduleId + '-integration/integration-sass.txt\n\n' +
-      '6. Run python bench/correctness.py (all workloads)\n\n' +
-      '7. Run python bench/benchmark.py (all workloads)\n\n' +
-      '8. Write ' + rlcrDir + '/profiles/' + moduleId + '-integration/manifest.md listing all exported files.\n\n' +
-      '## IMPORTANT: Do NOT interpret the data. Just run the tools and save the output.\n',
+      'You are a GPU profiling engineer. Run EXACTLY these commands.\n\n' +
+      'mkdir -p ' + integrationDir + '\n\n' +
+      '## 1. Profile (ONE command)\n' +
+      'ncu --set full --section PmSampling --section PmSampling_WarpStates --section SourceCounters \\\n' +
+      '  -k "regex:<KERNEL_NAME>" -c 1 -o ' + integrationDir + '/integration \\\n' +
+      '  python ' + rlcrDir + '/profiles/ncu_candidate_runner.py\n' +
+      'Use the kernel name from previous profiler runs. If unknown, run ncu --print-summary per-kernel -c 1 first.\n\n' +
+      '## 2. Export (ONE command)\n' +
+      'ncu --import ' + integrationDir + '/integration.ncu-rep --page details > ' + integrationDir + '/integration-details.txt\n\n' +
+      '## 3. SASS/PTX dump\n' +
+      'Read config.toml for arch. Source: ' + moduleMeta.sourceFile + '\n' +
+      'nvcc -cubin -lineinfo -arch=sm_<ARCH> ' + moduleMeta.sourceFile + ' -o ' + integrationDir + '/integration.cubin\n' +
+      'nvcc -ptx -arch=sm_<ARCH> ' + moduleMeta.sourceFile + ' -o ' + integrationDir + '/integration.ptx\n' +
+      'cuobjdump -res-usage ' + integrationDir + '/integration.cubin > ' + integrationDir + '/integration-res-usage.txt\n' +
+      'cuobjdump -sass ' + integrationDir + '/integration.cubin > ' + integrationDir + '/integration-sass.txt\n\n' +
+      '## 4. Correctness + benchmark\n' +
+      'python bench/correctness.py\n' +
+      'python bench/benchmark.py --device cuda:0\n\n' +
+      'Write ' + integrationDir + '/manifest.md listing files created.\n' +
+      'Do NOT analyze the data. Do NOT run any other ncu commands.\n',
       { label: 'profiler:integrate:' + moduleId, phase: 'Profile' }
     )
 
@@ -740,14 +752,16 @@ for (var modIdx = 0; modIdx < moduleOrder.length; modIdx++) {
       '- Kernel source: ' + moduleMeta.sourceFile + ' (read the FULL file)\n' +
       '- All analysis files: ' + rlcrDir + '/modules/' + moduleId + '/round-*-analysis.md\n\n' +
       '## Integration profiler data:\n' +
-      '- ' + rlcrDir + '/profiles/' + moduleId + '-integration/manifest.md\n' +
-      '- ' + rlcrDir + '/profiles/' + moduleId + '-integration/integration-res-usage.txt\n' +
-      '- ' + rlcrDir + '/profiles/' + moduleId + '-integration/integration-sass.txt\n' +
-      '- ' + rlcrDir + '/profiles/' + moduleId + '-integration/integration.ptx\n' +
-      '- ncu -i ' + rlcrDir + '/profiles/' + moduleId + '-integration/integration-full.ncu-rep --csv\n\n' +
+      '- ' + integrationDir + '/manifest.md\n' +
+      '- ' + integrationDir + '/integration-res-usage.txt\n' +
+      '- ' + integrationDir + '/integration-sass.txt\n' +
+      '- ' + integrationDir + '/integration.ptx\n' +
+      '- ' + integrationDir + '/integration-details.txt (NCU full details export)\n' +
+      '- ncu -i ' + integrationDir + '/integration.ncu-rep --csv\n\n' +
       '## Baseline data (for overall comparison):\n' +
-      '- ' + rlcrDir + '/profiles/baseline-res-usage.txt\n' +
-      '- ncu -i ' + rlcrDir + '/profiles/baseline-full.ncu-rep --csv\n\n' +
+      '- ' + rlcrDir + '/profiles/baseline-res-usage.txt (if available)\n' +
+      '- ' + rlcrDir + '/profiles/baseline-details.txt\n' +
+      '- ncu -i ' + rlcrDir + '/profiles/baseline.ncu-rep --csv\n\n' +
       '## Tasks:\n' +
       '1. Compare full-kernel performance against baseline.\n' +
       '2. If REGRESSED: read NCU + SASS data → diagnose (compiler regression / resource conflict / pipeline bubble / bad theory)\n' +
