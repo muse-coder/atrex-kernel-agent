@@ -59,10 +59,11 @@ git diff HEAD -- solution/ | head -100
 1. `docs/kernel_optimization_rules.md` — 优化护栏
 2. `docs/benchmark_contract.md` — benchmark 方法论
 3. `docs/correctness_contract.md` — 正确性要求
-4. `external/ncu-report-skill/SKILL.md` — **NCU profiling 方法论，所有 ncu 命令必须遵循**
-5. `external/KernelWiki/SKILL.md` — **Blackwell/Hopper kernel 优化知识库，架构设计和瓶颈诊断必须查询**
+4. `docs/kernel_optimization_lessons.md` — **历史经验教训，包含 fragment layout、swizzle trade-off、SM 架构能力、调试策略等，必须在实现前阅读以避免重复踩坑**
+5. `external/ncu-report-skill/SKILL.md` — **NCU profiling 方法论，所有 ncu 命令必须遵循**
+6. `external/KernelWiki/SKILL.md` — **Blackwell/Hopper kernel 优化知识库，架构设计和瓶颈诊断必须查询**
 
-如果 4 或 5 不存在，报告错误并停止。
+如果 5 或 6 不存在，报告错误并停止。
 
 ---
 

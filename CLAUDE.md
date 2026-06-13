@@ -17,6 +17,7 @@ CUTLASS 等）。
 - `docs/kernel_optimization_rules.md` — 优化护栏
 - `docs/benchmark_contract.md` — benchmark 方法论
 - `docs/correctness_contract.md` — 正确性要求
+- `docs/kernel_optimization_lessons.md` — 历史经验教训（fragment layout、swizzle trade-off、调试策略等）
 
 ## 默认 Baseline
 
