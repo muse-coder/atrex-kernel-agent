@@ -9,6 +9,20 @@
 #include <stdint.h>
 
 // =========================================================
+// MODULE: smem_layout BEGIN
+// =========================================================
+
+__device__ __forceinline__ int swizzle_offset(int row, int col, int tile_k) {
+    int col4 = col >> 2;
+    int swizzled_col4 = col4 ^ (row & 0xF);
+    return row * tile_k + (swizzled_col4 << 2) + (col & 3);
+}
+
+// =========================================================
+// MODULE: smem_layout END
+// =========================================================
+
+// =========================================================
 // MODULE: ptx_wrappers BEGIN
 // =========================================================
 
@@ -97,15 +111,26 @@ void fp8_gemm_kernel(
             int col = (tid & 1) << 5;
             const uint4* src_a = reinterpret_cast<const uint4*>(
                 A + (size_t)(m_start + row) * K + k_start + col);
-            uint4* dst_a = reinterpret_cast<uint4*>(smem_A + row * TILE_K + col);
-            dst_a[0] = src_a[0];
-            dst_a[1] = src_a[1];
-
             const uint4* src_b = reinterpret_cast<const uint4*>(
                 B + (size_t)(n_start + row) * K + k_start + col);
-            uint4* dst_b = reinterpret_cast<uint4*>(smem_B + row * TILE_K + col);
-            dst_b[0] = src_b[0];
-            dst_b[1] = src_b[1];
+            uint4 va0 = src_a[0], va1 = src_a[1];
+            uint4 vb0 = src_b[0], vb1 = src_b[1];
+            const uint32_t* ua = reinterpret_cast<const uint32_t*>(&va0);
+            const uint32_t* ub = reinterpret_cast<const uint32_t*>(&vb0);
+            #pragma unroll
+            for (int w = 0; w < 4; w++) {
+                int c = col + w * 4;
+                *reinterpret_cast<uint32_t*>(smem_A + swizzle_offset(row, c, TILE_K)) = ua[w];
+                *reinterpret_cast<uint32_t*>(smem_B + swizzle_offset(row, c, TILE_K)) = ub[w];
+            }
+            const uint32_t* ua1 = reinterpret_cast<const uint32_t*>(&va1);
+            const uint32_t* ub1 = reinterpret_cast<const uint32_t*>(&vb1);
+            #pragma unroll
+            for (int w = 0; w < 4; w++) {
+                int c = col + 16 + w * 4;
+                *reinterpret_cast<uint32_t*>(smem_A + swizzle_offset(row, c, TILE_K)) = ua1[w];
+                *reinterpret_cast<uint32_t*>(smem_B + swizzle_offset(row, c, TILE_K)) = ub1[w];
+            }
         }
 
         __syncthreads();
@@ -119,24 +144,26 @@ void fp8_gemm_kernel(
             for (int mm = 0; mm < NUM_MMA_M; mm++) {
                 int m_off = warp_m * WARP_M + mm * MMA_M;
                 int row0 = m_off + 2 * grp;
+                int col0 = k_off + k_base;
 
-                const uint32_t* ap0 = reinterpret_cast<const uint32_t*>(
-                    smem_A + row0 * TILE_K + k_off + k_base);
-                const uint32_t* ap1 = reinterpret_cast<const uint32_t*>(
-                    smem_A + (row0 + 1) * TILE_K + k_off + k_base);
-                uint32_t a0 = ap0[0];
-                uint32_t a1 = ap1[0];
-                uint32_t a2 = ap0[4];
-                uint32_t a3 = ap1[4];
+                uint32_t a0 = *reinterpret_cast<const uint32_t*>(
+                    smem_A + swizzle_offset(row0, col0, TILE_K));
+                uint32_t a1 = *reinterpret_cast<const uint32_t*>(
+                    smem_A + swizzle_offset(row0 + 1, col0, TILE_K));
+                uint32_t a2 = *reinterpret_cast<const uint32_t*>(
+                    smem_A + swizzle_offset(row0, col0 + 16, TILE_K));
+                uint32_t a3 = *reinterpret_cast<const uint32_t*>(
+                    smem_A + swizzle_offset(row0 + 1, col0 + 16, TILE_K));
 
                 #pragma unroll
                 for (int mn = 0; mn < NUM_MMA_N; mn++) {
                     int n_off = warp_n * WARP_N + mn * MMA_N;
+                    int b_row = n_off + grp;
 
-                    const uint32_t* bp = reinterpret_cast<const uint32_t*>(
-                        smem_B + (n_off + grp) * TILE_K + k_off + k_base);
-                    uint32_t b0 = bp[0];
-                    uint32_t b1 = bp[4];
+                    uint32_t b0 = *reinterpret_cast<const uint32_t*>(
+                        smem_B + swizzle_offset(b_row, col0, TILE_K));
+                    uint32_t b1 = *reinterpret_cast<const uint32_t*>(
+                        smem_B + swizzle_offset(b_row, col0 + 16, TILE_K));
 
                     mma_m16n8k32_fp8(
                         acc[mm][mn][0], acc[mm][mn][1],
