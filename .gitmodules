@@ -4,3 +4,6 @@
 [submodule "external/ncu-report-skill"]
 	path = external/ncu-report-skill
 	url = git@github.com:DongyunZou/ncu-report-skill.git
+[submodule "external/CudaSkill"]
+	path = external/CudaSkill
+	url = https://github.com/technillogue/ptx-isa-markdown.git
