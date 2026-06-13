@@ -80,15 +80,25 @@ git diff HEAD -- solution/ | head -100
 
 ---
 
-## Step 2: 创建任务目录
+## Step 2: 创建任务目录（独立 git 仓库）
+
+每个 campaign 使用独立 git 仓库，不在 agent 仓库中提交 kernel 代码。
 
 ```bash
-TASK_SLUG="<gpu>_<kernel>__multi_shape"
-cp -r templates/example_task campaigns/operators/$TASK_SLUG
-cd campaigns/operators/$TASK_SLUG
+TASK_SLUG="<gpu>_<kernel>__<shape_desc>"
+
+# 1. 在 /tmp/ 下创建独立 repo
+mkdir -p /tmp/$TASK_SLUG
+cp -r templates/example_task/* /tmp/$TASK_SLUG/
+cd /tmp/$TASK_SLUG
+git init
+
+# 2. 在 agent 仓库保留空目录结构（仅 .gitkeep）
+mkdir -p $AGENT_REPO/campaigns/operators/$TASK_SLUG/{baseline,bench,solution,docs}
+touch $AGENT_REPO/campaigns/operators/$TASK_SLUG/{baseline,bench,solution,docs}/.gitkeep
 ```
 
-填写 `prompt.md` 和 `config.toml`。
+在独立 repo 中填写 `prompt.md` 和 `config.toml`。
 
 创建 RLCR 状态目录：
 
@@ -102,7 +112,7 @@ mkdir -p .rlcr/current/modules .rlcr/current/profiles
 - `.rlcr/current/module-tracker.json` — `{ "modules": [], "completedModules": [] }`
 - `.rlcr/current/state.md` — 当前阶段
 
-git commit。
+在独立 repo 中 git commit。后续所有 kernel 代码修改、benchmark 结果都在此 repo 中提交。
 
 ---
 

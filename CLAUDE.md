@@ -29,7 +29,18 @@ CUTLASS 等）。
 - `external/KernelWiki/SKILL.md` — Blackwell/Hopper kernel 优化知识库
 - `external/ncu-report-skill/SKILL.md` — Nsight Compute profiling 方法论
 
+## Kernel 代码仓库隔离
+
+**每个 campaign 使用独立的 git 仓库管理 kernel 代码，不在本 agent 仓库中提交。**
+
+- 独立 repo 位置：`/tmp/<campaign_slug>/`（如 `/tmp/rtxpro5000_fp8_gemm__m1024/`）
+- 本仓库 `campaigns/operators/<slug>/` 只保留目录结构（`.gitkeep`），不含实际 kernel 代码
+- 所有 kernel 代码修改、优化迭代的 commit 在独立 repo 中进行
+- benchmark 实验结果（`results.jsonl`）不提交到本仓库
+
 ## 任务目录结构
+
+独立 repo 内的目录结构：
 
 ```
 prompt.md       — 任务卡
@@ -38,12 +49,12 @@ baseline/       — 参考实现（对称 ABI）
 solution/       — 优化后的 kernel
 bench/          — benchmark + correctness harness
 docs/           — 结果、方法笔记
-.rlcr/          — RLCR 循环状态（不 commit）
+.rlcr/          — RLCR 循环状态
 ```
 
 ## 约定
 
 - benchmark 模板：`docs/benchmark_template.py` → 复制到 `bench/benchmark.py`
-- 每次有意义的变更后 commit
+- 每次有意义的变更后在独立 repo 中 commit
 - benchmark/profile 前后检查 GPU 状态
 - 不伪造任何 evidence
