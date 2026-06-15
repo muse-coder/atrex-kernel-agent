@@ -62,8 +62,12 @@ git diff HEAD -- solution/ | head -100
 4. `docs/kernel_optimization_lessons.md` — **历史经验教训，包含 fragment layout、swizzle trade-off、SM 架构能力、调试策略等，必须在实现前阅读以避免重复踩坑**
 5. `external/ncu-report-skill/SKILL.md` — **NCU profiling 方法论，所有 ncu 命令必须遵循**
 6. `external/KernelWiki/SKILL.md` — **Blackwell/Hopper kernel 优化知识库，架构设计和瓶颈诊断必须查询**
+7. `external/CudaSkill/cuda_skill/references/ptx-isa.md` — **PTX ISA 文档搜索入口**
+   （完整文档 `external/CudaSkill/cuda_skill/references/ptx-docs/`）。无需通读，
+   但**分析 PTX/SASS 和设计/修改 PTX 指令时必须按需查阅**（见 Step 4b/4c、7c）
 
-如果 5 或 6 不存在，报告错误并停止。
+如果 5 或 6 不存在，报告错误并停止。若 7 不存在（子模块未初始化），
+回退到在线 PTX ISA 文档查询。
 
 ---
 
@@ -183,6 +187,12 @@ kernel 案例和优化技术。
 - **Dual-issue 机会**：连续独立指令的 scheduling 质量
 - **循环结构**：PTX 中的分支和循环展开程度
 - **Predicated execution**：条件执行指令的比例
+
+**查 PTX ISA 文档**：分析中遇到任何语义/约束不确定的指令（MMA fragment
+layout、cp.async/TMA、ldmatrix、mbarrier、cache 修饰符、指令的 SM 版本支持等），
+必须到 `external/CudaSkill/cuda_skill/references/ptx-docs/`（入口
+`ptx-isa.md`）查清楚，不靠猜测或 CuTe/CUTLASS 抽象推断（见
+`docs/kernel_optimization_lessons.md` §1、§2）。把查到的依据写进分析文档。
 
 ### 4c. 综合诊断
 
@@ -369,6 +379,10 @@ nvdisasm -gi -sf .rlcr/current/profiles/<id>-rN/candidate.cubin > .rlcr/current/
    - Dual-issue 质量：连续独立指令比例
    - 新增/消失的 `BAR.SYNC`、`MEMBAR` 等同步指令
    - nvdisasm 控制流图变化（分支、predicated execution）
+   - **查 PTX ISA 文档**：解读指令变化、或本轮 direction 要换用某条 PTX 指令时，
+     先到 `external/CudaSkill/.../ptx-docs/` 查其语义、操作数约束、fragment
+     layout、Target ISA Notes（SM 支持），再下结论。`round-N-analysis.md` 中
+     涉及 PTX 指令选择的结论必须引用 ISA 文档章节号作为依据。
 
 5. **Strategy trajectory** — 是否偏离 roadmap（>10% → 修正策略）
 

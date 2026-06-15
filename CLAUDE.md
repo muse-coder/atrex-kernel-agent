@@ -28,6 +28,10 @@ CUTLASS 等）。
 
 - `external/KernelWiki/SKILL.md` — Blackwell/Hopper kernel 优化知识库
 - `external/ncu-report-skill/SKILL.md` — Nsight Compute profiling 方法论
+- `external/CudaSkill/cuda_skill/references/ptx-isa.md` — PTX ISA 文档搜索入口
+  （完整文档在 `external/CudaSkill/cuda_skill/references/ptx-docs/`）。**分析
+  PTX/SASS 或修改 PTX 指令时,必须查阅:指令语义、操作数约束、fragment
+  layout、Target ISA Notes(SM 版本支持)**
 
 ## Kernel 代码仓库隔离
 
