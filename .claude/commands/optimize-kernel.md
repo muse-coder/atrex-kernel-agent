@@ -523,6 +523,22 @@ nvdisasm  -gi -sf     $RD/candidate.cubin > $RD/candidate-nvdisasm.txt
      先到 `external/CudaSkill/.../ptx-docs/` 查其语义、操作数约束、fragment
      layout、Target ISA Notes（SM 支持），再下结论。`rounds/r<N>/analysis.md` 中
      涉及 PTX 指令选择的结论必须引用 ISA 文档章节号作为依据。
+   - **调度层分析（强制，不能只看计数）**：每轮都必须从「统计层」（指令计数 /
+     寄存器 / spill / bank-conflict）深入到「**调度 / 因果层**」——读热循环 SASS 的
+     指令**发射顺序**：
+     - **ptxas 有没有按你的意图排？** 还是把你的改动重排/抵消了？（手改和 inline
+       PTX 都只是**提示**，ptxas 会二次调度——唯一确认方式是读 emit 出来的 SASS。
+       这正是「能不能搏得动」的实测：`cuobjdump -sass` 看 ptxas 保留了多少 + NCU
+       看目标 stall 有没有降。**绝不能只凭推断**。）
+     - stall 到底卡在哪两条指令之间？`NOP` 填充 / scoreboard 等待 / `*DEPBAR`？
+       math-pipe 指令（HMMA/QMMA…）是背靠背还是被 NOP 隔开？
+     - **给每个 gap 归类**：**依赖气泡**（RAW 链——可用重排 / 多累加器 / 软件流水
+       打破）vs **流水线吞吐 stall**（math pipe 本身吃不下——独立指令之间也夹 NOP；
+       重排无用，只能加并发流或减总指令）。这个分类直接决定某优化「是否可能有效」。
+     - **把每个 NCU stall 数对应到具体 SASS 模式**：别只写「wait=5.0」，要写
+       「wait=5.0 ← Lxxxx 处 QMMA 突发之间夹 NOP 但累加器互相独立 ⇒ 吞吐 bound、
+       非可重排依赖」。判「持平/退化」的轮次**必须**给出 SASS 证据说明**为什么**
+       （ptxas 重排掉了？spill？RAW 链？），不能只凭 wall-clock 推断。
 
 5. **Strategy trajectory** — 是否偏离 roadmap（>10% → 修正策略）
 
@@ -546,6 +562,18 @@ nvdisasm  -gi -sf     $RD/candidate.cubin > $RD/candidate-nvdisasm.txt
   KernelWiki、PTX ISA 文档、公开资料/论文/开源 kernel）找新方向再试
 - 所有模块完成且 roofline 达标 → 进入 Finalize
 - 否则只要还有可尝试的方向就继续；**仅在目标达成或用户明确叫停时停止**
+
+> **一个方向做到极致仍未达标 → 换思路，别在同一方向上继续微调（强制）**：
+> 当某个优化**方向/架构**已被推到极致（增量调参只剩持平或退化，且 SASS 调度层
+> 分析表明剩余瓶颈在该方向内**不可约**——如「NOP 是吞吐 stall 非依赖气泡」、
+> 「再加 warp 必然 throttle 爆」、「更多累加器必然 spill」），**不要再在这个方向
+> 上磨**。必须**主动换一条根本不同的思路**——通常是**更激进的并发结构 / 整体
+> re-architecture**（例：从「per-step 全块 barrier」换到 warp specialization；从
+> cp.async 换 TMA；从单累加器换 cooperative ping-pong 把更多 math 流喂进流水线
+> 又不过载；persistent / cluster / split-K 等）。判断「方向已到极致」必须有**调度层
+> SASS 证据 + 至少一次反向尝试的实测**（如 r14 加 warp、r15 加累加器都退化）撑腰，
+> 不能只凭直觉。换思路属于已授权的自主决策（见下），不要因为「是个大改」就停下来
+> 问或就此收尾——**目标没达成且还有根本不同的思路没试，就不算到顶**。
 
 > **自主决策（不要为已授权的决定征求许可）**：本流程内的决定——继续下一轮、
 > 转模块、拓宽搜索、**乃至 STRATEGY_REVISION→re-architecture**——都已被本 skill

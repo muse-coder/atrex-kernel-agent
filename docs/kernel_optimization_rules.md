@@ -254,6 +254,27 @@ Hopper). The `-arch` flag must match the GPU being benchmarked.
 - **FlashInfer analysis**: Use `cuobjdump -sass` on the FlashInfer `.so` to
   inspect the baseline's actual generated code when the source is not available
   or when JIT compilation choices are unclear.
+- **Scheduling-layer analysis (MANDATORY, not just counts)**: every round must
+  go past the *statistics* layer (counts / regs / spills / bank-conflict) to the
+  *scheduling / causal* layer. Read the hot-loop SASS instruction **ordering**,
+  not just totals:
+  - Did `ptxas` keep the schedule you intended, or reorder/undo your change?
+    (Hand edits and inline PTX are only *hints* — `ptxas` re-schedules. The only
+    way to know is to read the emitted SASS and confirm.)
+  - Where do the stalls actually sit — `NOP` padding / scoreboard waits /
+    `*DEPBAR` — between which instructions? Are the math-pipe instructions
+    (HMMA/QMMA/etc.) issued back-to-back or separated by NOPs?
+  - Classify each gap: **dependency bubble** (a RAW chain you can break by
+    reordering / more accumulators / software pipelining) vs **pipe-throughput
+    stall** (the math pipe simply can't accept another op — NOPs between
+    *independent* ops; reordering will NOT help, only more concurrent streams or
+    fewer total ops). This classification decides whether a fix is even possible.
+  - **Tie every NCU stall number to a specific SASS pattern.** E.g. don't write
+    "wait = 5.0"; write "wait = 5.0 ← QMMA bursts are NOP-separated at SASS Lxxxx
+    even though the accumulators are independent ⇒ tensor-pipe-throughput-bound,
+    not a reorderable dependency." A round judged "flat" or "regressed" must show
+    the SASS evidence for *why* (ptxas reordered it away? spilled? RAW chain?),
+    not infer it from the wall-clock alone.
 
 ### Recording
 
