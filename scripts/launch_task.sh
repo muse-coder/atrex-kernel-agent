@@ -234,7 +234,7 @@ EOF
 - Keep all artifacts inside this kernel folder.
 - Keep raw profiler/NCU/build artifacts local; do not stage them for the PR.
 
-## Expected Plan Shape
+## Recommended Approach
 
 - Recover the baseline source, exact callsite, and workload shape set.
 - Define matching baseline and candidate entry points using the same ABI.
