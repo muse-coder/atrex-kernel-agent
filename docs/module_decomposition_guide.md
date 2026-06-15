@@ -1,6 +1,7 @@
 # Module Decomposition Guide
 
-Decomposer agent 参考文档：如何将 GPU kernel 拆分为可独立优化的模块。
+模块分解参考：如何将 GPU kernel 拆分为可独立优化的模块。
+`/optimize-kernel` 在 Step 6c 做模块分解时参考本文档。
 
 ## 分解原则
 

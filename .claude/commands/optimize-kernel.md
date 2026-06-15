@@ -272,6 +272,9 @@ nvdisasm -gi -sf .rlcr/current/profiles/initial.cubin > .rlcr/current/profiles/i
 
 ### 6c. 对比分析 + 模块分解
 
+分解前先读 `docs/module_decomposition_guide.md`（分解原则、典型 GEMM/Attention/
+Reduction 分解、共享资源识别、优化顺序）。
+
 1. NCU metrics 对比：initial vs baseline（throughput、bandwidth、stalls、TC util）
 2. SASS 对比：指令数、寄存器数、spill 数、循环结构差异
 3. 验证 MODULE 标记，用 NCU source-level 数据算每模块 runtime fraction
