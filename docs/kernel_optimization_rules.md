@@ -130,6 +130,37 @@ Preserve explicit NaN/Inf checks. Use tolerances from the task's correctness
 contract unless the task records a stricter task-local tolerance in
 `docs/benchmark_method.md`.
 
+## Design To The Ceiling (Architecture Selection)
+
+The initial architecture must be designed **to the performance ceiling**, not as
+a deliberately-simple "correctness-first v1" to be climbed incrementally. The
+first design must adopt, from the start, every core technique the strongest
+baseline uses to reach its measured efficiency (e.g. warp specialization,
+ldmatrix, TMA, optimal tile/swizzle, async multi-stage pipeline). These are
+architectural skeleton, not bolt-on tweaks — a simple structure has a hard
+efficiency ceiling that no amount of incremental RLCR tuning can break.
+
+Before implementing, perform a **structural-ceiling analysis** in addition to the
+hardware roofline:
+
+- Hardware roofline = compute/memory floor (a property of the GPU + problem).
+- Structural ceiling = the max efficiency the **chosen candidate architecture**
+  can reach. Ask explicitly: is load/compute serialized by a per-step block
+  barrier? Are fragment loads bank-conflict-free (ldmatrix)? What caps occupancy?
+  Does it replicate the baseline's enabling techniques, and if not, how much
+  efficiency does each missing technique cost?
+
+**Gate:** if `structural ceiling < baseline measured efficiency` (or < the
+roofline-efficiency target), the design will lose — redesign before writing code.
+If beating the baseline genuinely requires a rewrite-level effort, say so up front
+rather than shipping a doomed simple version.
+
+The incremental-edit guardrail (no file overwrites during iteration) governs
+discipline **within a chosen architecture**. It never forces accepting a losing
+architecture: when analysis shows the architecture itself cannot win, redesign
+and re-implement from scratch (a new candidate source file) — that is the correct
+action, not a violation.
+
 ## Benchmark And Evidence
 
 Use `docs/benchmark_template.py` as the timing harness starting point. Do not

@@ -7,7 +7,14 @@
 
 ### 全局铁律
 
-1. **渐进式修改**：Step 5 首次实现后，所有后续修改（Step 7+）必须是增量 Edit，**严禁用 Write 覆盖 solution/ 下的任何文件**。每轮只改一个优化点。
+0. **设计即上限**：第一步（Step 4d）的架构设计就要做到优化上限——直接采用打赢
+   目标 baseline 所必需的全部核心技术，并通过 4d-ceiling 的结构上限门槛
+   （结构上限 ≥ 目标效率）才能进入实现。不允许"先简单版再渐进爬"。
+1. **渐进式修改**：Step 5 首次实现后，**在同一架构内**的所有后续修改（Step 7+）
+   必须是增量 Edit，**严禁用 Write 覆盖 solution/ 下的任何文件**，每轮只改一个
+   优化点。**边界**：此约束管的是"既定架构内的迭代纪律"，**不**约束"换架构"
+   ——当分析表明架构本身赢不了时，必须 STRATEGY_REVISION→重新设计→从头实现新
+   架构（合法，见 Step 4d 澄清与 Step 5）。
 2. **每次改动后 `git diff`**：确认改动范围与目标一致，非目标区域未被修改。
 3. **Regression guard**：每轮 benchmark 后对比上轮整体性能，退化 >5% 则停下分析，不继续下一轮。
 4. **不丢失历史**：每轮 commit 保留完整 git 历史，禁止 amend/rebase/force-push。
@@ -204,14 +211,51 @@ layout、cp.async/TMA、ldmatrix、mbarrier、cache 修饰符、指令的 SM 版
 
 ### 4d. 设计 Kernel 架构
 
+> **核心原则：第一步就把设计做到上限（design to the ceiling）。**
+> 初始架构必须直接奔着性能上限去——**从第一版就采用打赢目标 baseline 所必需
+> 的全部核心技术**（如 warp specialization、ldmatrix、TMA、最优 tile/swizzle、
+> 异步流水线等）。**严禁**先设计一个"correctness-first 的简单版"再指望靠 RLCR
+> 渐进爬上去：核心架构技术（warp 角色划分、ldmatrix vs 手写 LDS、同步机制）是
+> **架构骨架,不是后期能 bolt-on 的 tweak**——简单架构的效率天花板是焊死的,
+> 后续每轮只会在那个被焊死的上限里找局部最优,永远赢不了。RLCR 迭代是在一个
+> **已经逼近上限**的架构上做精调,不是从 0.45x 往上挪。
+
 基于分析结果设计新 kernel 架构：
-- Tile sizes、CTA shape、warp layout
-- Pipeline structure、async loading
+- Tile sizes、CTA shape、warp layout（含 warp specialization：producer/consumer 角色划分）
+- Pipeline structure、async loading（cp.async / TMA / mbarrier 编排）
+- Fragment 加载方式（ldmatrix 优先；手写 LDS 仅在 ldmatrix 不适用且已验证无 bank conflict 时）
 - Shared memory layout（含 swizzle/padding 策略避免 bank conflict）
-- Key PTX 指令选择（引用 SASS 分析中发现的瓶颈）
+- Key PTX 指令选择（引用 SASS 分析中发现的瓶颈；先做 ldmatrix/mbarrier/TMA 的编译可行性验证）
 - Module decomposition（`// MODULE: <id>` 标记）
 - 寄存器预算（参考 baseline res-usage 设定目标）
-- Performance ceiling 推导（roofline model，标注 compute/memory bound）
+
+#### 4d-ceiling. 结构上限分析（强制门槛，不可跳过）
+
+在 roofline（硬件算力/带宽下限）之外，**必须额外推导"所选候选架构本身的效率
+上限"**，并与 baseline 的实测效率对比：
+
+1. **硬件 roofline**：compute floor / memory floor（标注 compute/memory bound）。
+2. **结构上限（structural ceiling）**：**这个具体架构**最多能到峰值的百分之几？
+   逐项问：
+   - 加载与计算是否被 per-step 全块 barrier 串行化？（→ 上限被 barrier 压低）
+   - fragment 取数有无 bank conflict / 是否用了 ldmatrix？
+   - occupancy 被什么 cap（寄存器/smem）？能否藏住延迟？
+   - 是否复刻了 baseline 达到其效率所用的关键技术？缺哪条、各扣多少效率？
+3. **决策门槛**：若 `结构上限 < baseline 实测效率`（或 < roofline 90% 目标），
+   则**当前设计注定打不赢——禁止进入 Step 5**。必须回到本步重新设计,补齐
+   baseline 的使能技术,直到结构上限 ≥ 目标,再实现。
+4. 若判断"打赢 baseline 必须做重写级工作"（如必须 warp-specialized + ldmatrix
+   从头实现），**在此处就明确写出来并告知用户**工作量与取舍,而不是先写一版
+   注定输的简单实现。
+
+把硬件 roofline + 结构上限 + 决策结论写进 `.rlcr/current/kernel-architecture.md`。
+
+> **关于"渐进式硬约束"的边界（重要澄清）**：全局铁律的"严禁重写"管的是
+> **在一个既定架构内迭代时**的纪律（别用 Write 覆盖、别一报错就整文件重写）。
+> 它**绝不意味着**"架构选错了也只能将就"。当结构上限分析（4d-ceiling）或 Step 7
+> 的迭代证据表明**整体思路/架构本身赢不了**时，正确动作是
+> **STRATEGY_REVISION → 重新设计架构 → 从头实现一版新 candidate**（这是合法且
+> 必要的，不算违反渐进式约束；见 Step 5 关于重新实现的说明）。
 
 写 `.rlcr/current/kernel-architecture.md` 和 `.rlcr/current/direction.md`。
 
@@ -253,6 +297,18 @@ git commit。
      - marker 不存在时两条都不生效（首次实现照常用 Write）。
    - 后续所有 solution/ 改动必须用 Edit；动手前先读本轮 direction（hook 会强制）
 8. 写 `.rlcr/current/initial-implementation-summary.md`
+
+### 重新实现（re-architecture，当 4d-ceiling 或 Step 7 判定需换架构时）
+
+这是合法且必要的，不是"被禁止的重写"。流程：
+1. 先更新 `.rlcr/current/kernel-architecture.md`：写清"为何旧架构上限不够"
+   （引用结构上限分析 + 实测证据）与新架构如何达到目标上限。
+2. **新架构写成 solution/ 下的新源文件**（如 `kernel_v2.cu`），不去覆盖被锁的
+   旧文件——这样既绕过防重写 hook、又保留旧实现供对比，git 历史完整。
+3. 把 candidate ABI / adapter 切到新文件；旧文件可在新版稳定后删除（用 `git rm`）。
+4. 新文件同样插 MODULE 标记，跑 correctness + benchmark，commit
+   "re-architecture: <新架构> (initial)"，然后对**新文件**重新进入 Step 6/7 的
+   渐进迭代（防重写约束此后作用于新文件）。
 
 ---
 

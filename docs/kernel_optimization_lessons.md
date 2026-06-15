@@ -229,3 +229,41 @@ bank conflict 消除。应该优先做 pipeline，然后再精调 bank conflict�
   → 应该先只改 load 路径（用 swizzle 读），store 保持原样
 - 没有在改之前 profile 确认瓶颈的真实占比
   → 应该先 NCU profile，算出每个瓶颈的理论收益上限，再决定优化顺序
+
+---
+
+## 9. 设计即上限：架构选错，渐进优化救不回来（fused BF16→FP8 GEMM 复盘）
+
+### 问题
+fused BF16→FP8 GEMM (M=1024, SM120) 任务里，第一步图省事选了"correctness-first
+简单架构"：所有 warp「加载→`__syncthreads`→MMA」、手写 LDS 取 fragment、无 warp
+specialization、无 ldmatrix。打算靠 RLCR 逐轮爬。结果：初版 0.45x，r2 async-A
+爬到 0.56x，之后 r3(深流水)/r4(padding)/r5(BK=64) 三轮全 regression，卡在
+~0.56x 打不过 baseline。
+
+### 根因
+这个结构的 tensor 利用率天花板 ~48-50%（加载与计算被 per-step 全块 barrier 串
+行化 + 手写 LDS 有 21M bank conflict）。baseline (FlashInfer CUTLASS) 的 85% 来自
+**warp specialization（producer/consumer 分离、去全块 barrier）+ ldmatrix（无冲突
+取数）+ TMA**——这些是**架构骨架，不是后期 bolt-on 的 tweak**。简单架构的上限被
+焊死，每轮渐进只是在焊死的上限内找局部最优，永远赢不了。r3/r4/r5 想突破都失败，
+正因为突破=换架构。
+
+### 正确做法（已写进框架）
+1. **第一步设计就奔上限**：直接采用打赢 baseline 所需的全部核心技术。
+2. **结构上限分析（强制门槛）**：除硬件 roofline 外，推导"所选架构本身的效率
+   上限"；若 < baseline 实测效率 → 注定输，禁止进入实现，先重设计。
+   （见 `optimize-kernel` Step 4d-ceiling、`kernel_optimization_rules.md`
+   §Design To The Ceiling。）
+3. **渐进式约束的边界**：「禁止重写」只管"既定架构内迭代"；架构本身赢不了时，
+   STRATEGY_REVISION→重新设计→从头实现新架构是合法且必要的（新写一个
+   `kernel_v2.cu`，不覆盖被锁旧文件，绕过防重写 hook 且保留对比）。
+
+### SM120 fp8 GEMM 奔上限的关键技术可行性（已编译验证, CUDA13/sm_120a）
+- `ldmatrix.sync.aligned.m8n8.x4.shared.b16`：✅（A 用 bf16 ldmatrix 再 cvt 到 fp8）
+- `ldmatrix ... .b8`（fp8 直接）：m16n16.x2/x4、m8n8.x4 都 ❌（ptxas 报 vector/shape
+  不符）——fp8 fragment 不能直接 ldmatrix，需走 b16 路径或手写。
+- `mbarrier.init/arrive/try_wait.parity`：✅（warp specialization 可用）
+- `cp.async.bulk.tensor.2d ... mbarrier::complete_tx::bytes`（TMA）：✅
+- `cvt.rn.satfinite.e4m3x2.bf16x2`：❌（ptxas 不收），用 bf16→f32(`bits<<16`)→
+  `cvt.e4m3x2.f32`。
