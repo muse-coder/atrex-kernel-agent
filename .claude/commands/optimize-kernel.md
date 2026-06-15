@@ -142,16 +142,30 @@ TASK_SLUG="<gpu>_<kernel>__<shape_desc>"
 
 # 1. 在 /tmp/ 下创建独立 repo
 mkdir -p /tmp/$TASK_SLUG
-cp -r templates/example_task/. /tmp/$TASK_SLUG/   # 末尾的 . 连 .gitignore 一起拷
 cd /tmp/$TASK_SLUG
-git init   # .gitignore 已就位：.rlcr/ 等过程产物本地保留、不提交
+git init   # 先 init
 
-# 2. 在 agent 仓库保留空目录结构（仅 .gitkeep）
+# 2. 只拷"目录骨架 + .gitignore"，**不要**拷 prompt.md / config.toml
+#    （这两个文件你马上要从零写成真正内容；如果先 cp 占位符过来，它们就成了
+#     "已存在文件"，之后用 Write 覆盖会被 "File has not been read yet" 拦住，
+#     白白多一次 Read 仪式。所以这里直接不拷它们，用 Write 新建即可。）
+cp $AGENT_REPO/templates/example_task/.gitignore /tmp/$TASK_SLUG/
+mkdir -p /tmp/$TASK_SLUG/{baseline,bench,solution,docs}
+#    .gitignore 已就位：.rlcr/ 等过程产物本地保留、不提交
+
+# 3. 在 agent 仓库保留空目录结构（仅 .gitkeep）
 mkdir -p $AGENT_REPO/campaigns/operators/$TASK_SLUG/{baseline,bench,solution,docs}
 touch $AGENT_REPO/campaigns/operators/$TASK_SLUG/{baseline,bench,solution,docs}/.gitkeep
 ```
 
-在独立 repo 中填写 `prompt.md` 和 `config.toml`。
+用 **Write 新建** `prompt.md` 和 `config.toml`（参考 `templates/example_task/`
+里的同名文件作为格式样板，但不要 cp 过来再覆盖）。
+
+> **关于 "File has not been read yet" 报错**：Write 工具对**已存在**的文件会要求
+> "先用 Read 工具读过才能覆盖"（`cat` 不算，它只认 Read 工具的调用记录）。所以
+> 规则是：**新建文件 → 直接 Write；要改已存在的文件 → 先 Read 再 Write，或干脆用
+> Edit 做增量修改。** 本步把 prompt.md/config.toml 留给 Write 新建，正是为了绕开
+> 这个无谓的摩擦。
 
 创建 RLCR 状态目录：
 
