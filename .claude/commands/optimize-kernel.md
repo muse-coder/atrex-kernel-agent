@@ -234,11 +234,14 @@ git commit。
 5. `python bench/benchmark.py` — 记录结果
 6. git commit: "initial kernel implementation"
 7. **创建渐进式修改锁**：`touch .rlcr/current/.initial-impl-done`
-   - 此 marker 一旦存在，项目 PreToolUse hook
-     (`.claude/hooks/block_solution_rewrite.py`)会**拦截**对该 campaign
-     `solution/` 的 Write 覆盖，以及 shell 重写（`>`/`>>`/`tee`/`sed -i` 等
-     重定向到 solution/）。marker 不存在时不拦截（首次实现照常）。
-   - 后续所有 solution/ 改动必须用 Edit（Edit/MultiEdit 不被拦截）
+   - 此 marker 一旦存在，项目 hook（`.claude/hooks/block_solution_rewrite.py`）
+     会强制两条规则（基于磁盘状态，**context 压缩也冲不掉**）：
+     - **防重写**：拦截对该 campaign `solution/` 的 Write 覆盖，以及 shell
+       重写（`>`/`>>`/`tee`/`sed -i`/`truncate`/`dd` 重定向到 solution/）。
+     - **先读方向再改**：迭代期对 locked `solution/` 的 Edit，必须先 Read 当前轮
+       的 `round-N-direction.md`（最新的那个）才放行；没读会被拦。
+     - marker 不存在时两条都不生效（首次实现照常用 Write）。
+   - 后续所有 solution/ 改动必须用 Edit；动手前先读本轮 direction（hook 会强制）
 8. 写 `.rlcr/current/initial-implementation-summary.md`
 
 ---
@@ -289,7 +292,8 @@ nvdisasm -gi -sf .rlcr/current/profiles/initial.cubin > .rlcr/current/profiles/i
 
 **核心约束：每轮只做增量修改，不重写文件**
 
-1. 读 `modules/<id>/round-N-direction.md`
+1. 读 `modules/<id>/round-N-direction.md`（**必读**：hook 会拦截"未读方向就
+   Edit solution/"，没读这一步后面改不动）
 2. 如有上轮 P0/P1 issues 先修复
 3. **修改前**：
    - `git stash` 或确认工作区干净

@@ -2,12 +2,25 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Write|Bash",
+        "matcher": "Write|Edit|MultiEdit|Bash",
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR}/.claude/hooks/block_solution_rewrite.py\"",
-            "statusMessage": "IterKernel solution rewrite guard",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR}/.claude/hooks/block_solution_rewrite.py\" pre",
+            "statusMessage": "IterKernel solution guard (rewrite + direction-read)",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR}/.claude/hooks/block_solution_rewrite.py\" post",
+            "statusMessage": "IterKernel direction-read tracker",
             "timeout": 10
           }
         ]
