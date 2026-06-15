@@ -18,6 +18,11 @@ separate process on every tool call):
    read since it was last written. Reading it (PostToolUse) refreshes
    ``.rlcr/current/.direction-read-marker``.
 
+3. SASS GATE (process layer).  An ``Edit`` to a locked ``solution/`` in round N
+   (N>=2) is denied until the PREVIOUS round produced its SASS/static analysis
+   (``.rlcr/current/rounds/r<N-1>/candidate-sass.txt`` on disk). Enforces "每轮
+   都要做 SASS, 否则不进入下一轮代码修改". Round 1 is never gated.
+
 Invocation:
   pre  → handle_pre_tool_use   (matcher: Write|Edit|MultiEdit|Bash)
   post → handle_post_tool_use  (matcher: Read)
@@ -46,6 +51,16 @@ REWRITE_REASON = (
 DIRECTION_REASON = (
     "📖 本轮优化方向尚未阅读。编辑 solution/ 前必须先 Read 当前轮的方向文件："
     "{path}。读完它再做增量 Edit（即使 context 被压缩也不能跳过这一步）。"
+)
+
+# Representative of the 5 mandatory per-round static products. Its presence in a
+# round dir means that round's SASS/static analysis was generated.
+SASS_ARTIFACT = "candidate-sass.txt"
+SASS_REASON = (
+    "🔬 上一轮（{path}）的 SASS/静态分析尚未生成。硬门槛：每一轮都必须先完成 5 类"
+    "静态产物（candidate.ptx/.cubin/candidate-sass.txt/candidate-res-usage.txt/"
+    "candidate-nvdisasm.txt）并写进 analysis.md，才能开始下一轮的 solution/ 代码修改。"
+    "请先为上一轮生成静态分析（即使 context 被压缩也不能跳过）。"
 )
 
 
@@ -148,6 +163,28 @@ def direction_unread(root: Path) -> Path | None:
     return None
 
 
+def prev_round_sass_missing(root: Path) -> Path | None:
+    """SASS GATE: editing solution/ in the current round is blocked until the
+    PREVIOUS round produced its SASS/static analysis. Enforces "每轮都要做 SASS,
+    否则不进入下一轮代码修改". Keyed on rounds/r<N>/candidate-sass.txt on disk
+    (compaction-proof). Round 1 (no previous) is never gated."""
+    rounds = root / ".rlcr" / "current" / "rounds"
+    dirs: list[tuple[int, Path]] = []
+    try:
+        for d in rounds.iterdir():
+            m = re.fullmatch(r"r(\d+)", d.name)
+            if m and d.is_dir():
+                dirs.append((int(m.group(1)), d))
+    except OSError:
+        return None
+    if len(dirs) < 2:
+        return None  # round 1 or none -> nothing to gate on
+    dirs.sort()
+    prev_dir = dirs[-2][1]  # round before the newest
+    artifact = prev_dir / SASS_ARTIFACT
+    return None if artifact.exists() else artifact
+
+
 def handle_pre_tool_use(payload: dict) -> int:
     tool = (payload.get("tool_name") or "").lower()
     tool_input = payload.get("tool_input") or {}
@@ -166,7 +203,12 @@ def handle_pre_tool_use(payload: dict) -> int:
         if root is None:
             return 0
         cur = direction_unread(root)
-        return emit_deny(DIRECTION_REASON.format(path=cur)) if cur else 0
+        if cur:
+            return emit_deny(DIRECTION_REASON.format(path=cur))
+        sass = prev_round_sass_missing(root)
+        if sass:
+            return emit_deny(SASS_REASON.format(path=sass.parent))
+        return 0
 
     return 0
 

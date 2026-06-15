@@ -27,6 +27,14 @@
    benchmark 选出（`git checkout <最优 commit> -- solution/`，见 Step 9）。
 5. **唯一的例外是正确性/编译失败**：错的代码不能 benchmark，必须修到能跑对
    （见"错误恢复流程"）。这是"修到正确"，不是"性能回退"。
+6. **SASS 分析硬门槛（gating，不可跳过）**：每一轮**必须**先完成 5 类静态产物
+   （`candidate.ptx/.cubin/candidate-sass.txt/candidate-res-usage.txt/
+   candidate-nvdisasm.txt`）+ NCU 实测，并写进 `rounds/r<N>/analysis.md`，
+   **才能开始下一轮的 solution/ 代码修改**。这由 hook
+   (`block_solution_rewrite.py` 的 SASS GATE) 机械强制：下一轮 Edit solution/ 时，
+   若上一轮 `rounds/r<N-1>/candidate-sass.txt` 不存在则被拦截。**所有轮次（含
+   re-architecture 里程碑）都必须用 `.rlcr/current/rounds/r<N>/` 目录结构**，
+   否则 hook 的 direction/SASS 门槛失效（这正是 v2/v3 里程碑当初绕过 SASS 的原因）。
 
 ### 错误恢复流程（编译失败 / 精度错误时）
 
