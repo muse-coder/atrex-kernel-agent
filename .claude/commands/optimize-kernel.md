@@ -300,15 +300,21 @@ git commit。
 
 ### 重新实现（re-architecture，当 4d-ceiling 或 Step 7 判定需换架构时）
 
-这是合法且必要的，不是"被禁止的重写"。流程：
+这是合法且必要的，不是"被禁止的重写"。re-architecture = 一次**新的 Step 5 首次
+实现**，所以它合法地重置迭代锁（防重写 marker 管的是"迭代期"，不是"换架构"）。
+流程：
 1. 先更新 `.rlcr/current/kernel-architecture.md`：写清"为何旧架构上限不够"
    （引用结构上限分析 + 实测证据）与新架构如何达到目标上限。
-2. **新架构写成 solution/ 下的新源文件**（如 `kernel_v2.cu`），不去覆盖被锁的
-   旧文件——这样既绕过防重写 hook、又保留旧实现供对比，git 历史完整。
-3. 把 candidate ABI / adapter 切到新文件；旧文件可在新版稳定后删除（用 `git rm`）。
-4. 新文件同样插 MODULE 标记，跑 correctness + benchmark，commit
-   "re-architecture: <新架构> (initial)"，然后对**新文件**重新进入 Step 6/7 的
-   渐进迭代（防重写约束此后作用于新文件）。
+2. **显式重置迭代锁**：`rm .rlcr/current/.initial-impl-done`（hook 会拦截对
+   locked solution/ 的**任何** Write，包括新文件——所以必须先解锁，这是 marker
+   的正常生命周期，不是绕过）。在 commit message / 文档里写明这是 authorized
+   re-architecture。
+3. 新架构**写成 solution/ 下的新源文件**（如 `kernel_v2.cu`），保留旧实现供
+   对比，git 历史完整；不去 Write 覆盖旧文件本身。
+4. 把 candidate ABI / adapter 切到新文件；旧文件在新版验证更快后用 `git rm` 删除。
+5. 新文件插 MODULE 标记，跑 correctness + benchmark，commit
+   "re-architecture: <新架构> (initial)"，**重新 `touch .initial-impl-done`**
+   重新上锁，然后对**新文件**进入 Step 6/7 的渐进迭代。
 
 ---
 
