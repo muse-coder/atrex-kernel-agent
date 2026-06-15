@@ -9,8 +9,36 @@ GPU kernel 优化项目。使用 `/optimize-kernel <kernel描述>` 启动优化�
 （一个 inline 函数对应一条 PTX 指令），尽量不用 CUTLASS/CuTe 等多层模板抽象。
 但如果从零实现某些功能确实过于复杂（如复杂的 epilogue fusion、多阶段 pipeline
 编排等），允许选择性使用 CUTLASS/CuTe 的部分模板来简化实现，但需在
-`docs/draft.md` 中记录使用理由。Baseline 可以是任何实现（FlashInfer、
-CUTLASS 等）。
+`docs/draft.md` 中记录使用理由。
+
+## 硬性要求（最高优先级，不可违反）
+
+1. **候选 kernel 必须从头设计并实现（design & implement from scratch）。**
+   - 任务的核心交付物是"我自己从零写的 kernel"。**严禁**把任何已有实现
+     （上一个 campaign 的 kernel、库 kernel、网上抄来的 kernel）当作起点去
+     "继续迭代 / 修补"。即使存在一个一模一样 shape 的旧 campaign,也**不得**
+     在它的 kernel 上接着改——必须新开一个空文件,从 PTX 薄封装、warp 角色
+     划分、主循环、epilogue 全部自己重新设计实现。
+   - 旧 campaign / 库实现只能作为**学习与对比参考**（看它的 NCU、看它的 SASS、
+     借鉴架构思路），不能作为代码起点。
+   - **不要把精力花在 benchmark harness 的开销/公平性修补上当作"优化"**——
+     优化指的是 kernel 本身的架构与指令级工作。harness 问题只在影响正确对比
+     时顺手修正,不是任务目标。
+
+2. **Baseline 必须对标"当前最强的现成实现"。**
+   - baseline = 该算子在本 GPU 上**最快的现成库实现**,通常在 PyTorch
+     （cuBLAS / `torch._scaled_mm` 等）与 **FlashInfer 库** 之间取**实测更快**
+     的那个。两个都要测,选快的当 baseline,并在 `docs/baseline_source.md`
+     记录实测对比与选择理由。
+   - 绝不拿一个弱 baseline 来"虚假取胜"。打赢的是当前 SOTA 现成实现。
+
+3. **性能必须用 NCU 实测作准（authoritative）。**
+   - baseline vs candidate 的快慢、每轮的进退、最终选最优版,**一律以 NCU 实测
+     的 kernel duration（`gpu__time_duration` / kernel time）为准**。
+   - `bench/benchmark.py` 的 wall-clock 仅作辅助参考,不能作为性能结论的唯一
+     依据（含 Python dispatch / 包装层开销,会掩盖 kernel 真实表现）。
+   - baseline 与 candidate 用**同一套 ncu 命令、同一块空闲 GPU** profile,引用
+     具体 metric 数值得出结论。ncu 命令遵循 `external/ncu-report-skill/SKILL.md`。
 
 ## 规则文档（优化过程中必须遵守）
 
@@ -19,10 +47,16 @@ CUTLASS 等）。
 - `docs/correctness_contract.md` — 正确性要求
 - `docs/kernel_optimization_lessons.md` — 历史经验教训（fragment layout、swizzle trade-off、调试策略等）
 
-## 默认 Baseline
+## Baseline 选择（对标当前最强现成实现）
 
-没有指定 baseline 时，默认用 **FlashInfer AOT kernel**。FlashInfer 必须
-以 AOT 预编译版本安装（`FLASHINFER_ENABLE_AOT=1`）。
+Baseline 必须是该算子在目标 GPU 上**最快的现成库实现**。流程：
+1. 测 PyTorch 路径（cuBLAS，如 `torch._scaled_mm` / `torch.mm`）。
+2. 测 **FlashInfer 库**路径（AOT 预编译,`FLASHINFER_ENABLE_AOT=1`）。
+3. 取两者中**实测更快**的作为 baseline；在 `docs/baseline_source.md` 记录
+   两者的实测延迟、版本/commit、入口函数、选择理由。
+
+baseline 与 candidate 必须用对称的 ABI 与计时方式（均 destination-passing,
+无单边多余开销）。不得用弱 baseline 取巧。
 
 ## 知识来源（如果存在则使用）
 

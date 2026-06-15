@@ -7,6 +7,25 @@
 
 ### 全局铁律
 
+-2. **候选 kernel 必须从头设计并实现（FROM SCRATCH）**：核心交付物是"你自己从零
+   写的 kernel"。**严禁**以任何已有实现（上一个 campaign 的 kernel、库 kernel、
+   抄来的 kernel）作为代码起点去"继续迭代/修补"。即使发现一个**同 shape、同 GPU
+   的旧 campaign**,也绝不在它的 .cu 上接着改——必须新开空文件,把 PTX 薄封装、
+   warp 角色划分、主循环、epilogue 全部自己重新设计写出来。旧 campaign / 库实现
+   只能作为**学习与对比参考**（读它的 NCU/SASS、借鉴架构思路）,不能当起点。
+   一打开任务就开始设计并写新 kernel,不要先去捡现成 kernel 的便宜。
+-1. **不要把 harness/开销修补当作"优化"**：优化 = kernel 本身的架构与指令级工作
+   （tile/warp-spec/pipeline/swizzle/PTX 指令选择等）。benchmark 包装层的开销、
+   公平性问题只在**影响正确对比**时顺手修正,绝不作为优化目标或拿来充当"成果"。
+   若发现自己在改 `.py` 包装、`.item()`、`copy_`、计时代码而不是 `.cu` kernel,
+   说明跑偏了,立即回到 kernel。
+-0.5. **性能必须用 NCU 实测（authoritative）**：判断 baseline 与 candidate 的
+   性能、判断每轮快了还是慢了、最终选最优版,**都以 NCU 实测的 kernel 时间
+   （`gpu__time_duration` / kernel duration）为准**。`bench/benchmark.py` 的
+   wall-clock 只作辅助参考,不得作为性能结论的唯一依据（它含 Python dispatch、
+   包装层开销,会掩盖 kernel 真实表现）。每轮 baseline 与 candidate 都要用
+   **同一套 NCU 命令**在**同一块空闲 GPU**上 profile,引用具体 metric 数值得出
+   "快/慢/持平"。NCU 命令遵循 `external/ncu-report-skill/SKILL.md`。
 0. **设计即上限**：第一步（Step 4d）的架构设计就要做到优化上限——直接采用打赢
    目标 baseline 所必需的全部核心技术，并通过 4d-ceiling 的结构上限门槛
    （结构上限 ≥ 目标效率）才能进入实现。不允许"先简单版再渐进爬"。
@@ -103,7 +122,11 @@ git diff HEAD -- solution/ | head -100
 - **Kernel 类型**：什么算子（FP8 GEMM、GroupNorm+SiLU、FlashAttention 等）
 - **目标 GPU**：什么架构。如果用户没说，运行 `nvidia-smi` 检测
 - **Workload shapes**：如果没给，根据 kernel 类型生成常见 production shapes
-- **Baseline**：没有指定则默认 FlashInfer AOT
+- **Baseline**：对标**当前最强的现成库实现**。实测对比 PyTorch（cuBLAS，如
+  `torch._scaled_mm`/`torch.mm`）与 **FlashInfer 库**（AOT 预编译）两条路径,
+  取**更快**的那个当 baseline,在 `docs/baseline_source.md` 记录两者实测延迟、
+  版本、入口与选择理由。不得用弱 baseline 取巧。baseline 与 candidate 必须对称
+  ABI/计时（均 destination-passing,无单边多余开销）。
 - **特殊约束**：dtype、精度要求、是否 fused 等
 
 如果 kernel 类型不明确，直接问用户。
@@ -300,7 +323,8 @@ git commit。
 
 ### 实现
 
-1. 按 `direction.md` 从头实现完整 CUDA kernel，写在 `solution/`
+1. 按 `direction.md` **从头**实现完整 CUDA kernel，写在 `solution/`（新开空文件,
+   不复制/不继承任何已有 kernel——见全局铁律 -2 FROM SCRATCH）
 2. 插入 `// MODULE: <id> BEGIN/END` 标记
 3. 写 benchmark adapter
 4. `python bench/correctness.py` — 全部通过
