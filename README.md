@@ -105,21 +105,23 @@ docs/           run log、profile 笔记、结果、决策记录
 ## RLCR 迭代循环
 
 `/optimize-kernel` 在 Step 7 进入逐模块的 RLCR 迭代，由同一个 agent 在对话内
-顺序完成，每一轮：
+顺序完成。轮次用**全局递增编号 N**，**每轮一个目录** `.rlcr/current/rounds/r<N>/`
+存放该轮全部产物（**本地，不 commit**）：
 
-1. **实现** — 读 `round-N-direction.md`，对目标 MODULE 做**增量 Edit**
-   （严禁 Write 覆盖 `solution/` 文件），跑 correctness + benchmark
-2. **Profile** — NCU 实测 + PTX/SASS 静态分析，存入 `profiles/<id>-rN/`
-3. **分析** — 综合 NCU/SASS 证据写 `round-N-analysis.md`，给出 verdict 与
-   下一轮 `round-(N+1)-direction.md`
+1. **实现** — 读 `rounds/r<N>/direction.md`，对目标 MODULE 做**增量 Edit**
+   （严禁 Write 覆盖 `solution/` 文件），跑 correctness + benchmark，commit 代码
+2. **Profile** — NCU 实测 + PTX/SASS 静态分析，全部存入 `rounds/r<N>/`
+3. **分析** — 综合 NCU/SASS 证据写 `rounds/r<N>/analysis.md`，给出 verdict 与
+   下一轮 `rounds/r<N+1>/direction.md`
 
-每轮 8 步硬约束（不可跳过）见 CLAUDE.md「RLCR 每轮硬约束」。
+每轮只 commit `solution/` 代码；`.rlcr/`（含每轮目录）整个 gitignore，过程
+记录与 profile 数据只留本地。每轮 8 步硬约束（不可跳过）见 CLAUDE.md。
 
-停止条件：
+停止条件（**无轮次上限**，只要有进展/有方向就继续）：
 - **roofline efficiency ≥ 90%** → 优化成功，全部结束
-- 单模块**连续 5 轮**无进展 → 跳到下一模块
-- 单模块最多 **15 轮**
-- 所有模块完成 → 进入 Integration + Finalize
+- 某模块持续无进展 → 转去优化下一个模块（不是停止，之后可回来再试）
+- 所有模块暂无新方向 → 拓宽搜索空间找新方向，不轻易判定"到顶"
+- 仅在 roofline 达标或用户明确叫停时停止
 
 每轮迭代开始前必须刷新上下文：任务卡、当前 benchmark 证据、KernelWiki。
 RLCR 状态保存在独立 repo 的 `.rlcr/current/` 目录下。

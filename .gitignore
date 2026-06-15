@@ -22,3 +22,11 @@ __pycache__/
 *.so
 *.a
 build/
+
+# --- Kernel campaign isolation (see CLAUDE.md) ---
+# Campaign kernel code, harness, configs, docs, and results live in standalone
+# /tmp/<slug>/ git repos. This agent repo keeps ONLY the directory structure via
+# .gitkeep placeholders — never the actual content.
+campaigns/operators/*/**
+!campaigns/operators/*/**/
+!campaigns/operators/**/.gitkeep

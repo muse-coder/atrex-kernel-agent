@@ -93,9 +93,9 @@ TASK_SLUG="<gpu>_<kernel>__<shape_desc>"
 
 # 1. 在 /tmp/ 下创建独立 repo
 mkdir -p /tmp/$TASK_SLUG
-cp -r templates/example_task/* /tmp/$TASK_SLUG/
+cp -r templates/example_task/. /tmp/$TASK_SLUG/   # 末尾的 . 连 .gitignore 一起拷
 cd /tmp/$TASK_SLUG
-git init
+git init   # .gitignore 已就位：.rlcr/ 等过程产物本地保留、不提交
 
 # 2. 在 agent 仓库保留空目录结构（仅 .gitkeep）
 mkdir -p $AGENT_REPO/campaigns/operators/$TASK_SLUG/{baseline,bench,solution,docs}
@@ -107,7 +107,7 @@ touch $AGENT_REPO/campaigns/operators/$TASK_SLUG/{baseline,bench,solution,docs}/
 创建 RLCR 状态目录：
 
 ```bash
-mkdir -p .rlcr/current/modules .rlcr/current/profiles
+mkdir -p .rlcr/current/rounds .rlcr/current/profiles
 ```
 
 创建以下文件：
@@ -249,7 +249,7 @@ git commit。
      - **防重写**：拦截对该 campaign `solution/` 的 Write 覆盖，以及 shell
        重写（`>`/`>>`/`tee`/`sed -i`/`truncate`/`dd` 重定向到 solution/）。
      - **先读方向再改**：迭代期对 locked `solution/` 的 Edit，必须先 Read 当前轮
-       的 `round-N-direction.md`（最新的那个）才放行；没读会被拦。
+       的 `rounds/r<N>/direction.md`（最新的那个）才放行；没读会被拦。
      - marker 不存在时两条都不生效（首次实现照常用 Write）。
    - 后续所有 solution/ 改动必须用 Edit；动手前先读本轮 direction（hook 会强制）
 8. 写 `.rlcr/current/initial-implementation-summary.md`
@@ -291,21 +291,34 @@ Reduction 分解、共享资源识别、优化顺序）。
 4. 写 `.rlcr/current/decomposition.md`
 5. Gap analysis → 每模块瓶颈定位（NCU 证据 + SASS 证据）
 6. 全局优化策略 → 写 `.rlcr/current/global-strategy.md`
-7. 写第一个模块的 `.rlcr/current/modules/<id>/round-0-direction.md`
-8. 更新 `module-tracker.json`，git commit
+7. 写第一轮方向 `.rlcr/current/rounds/r1/direction.md`（在文档内标明本轮目标模块）
+8. 更新 `module-tracker.json`，git commit（只提交 `solution/` 代码与 `docs/`）
 
 ---
 
 ## Step 7: Module Loop — RLCR 迭代
 
-按 suggestedOrder 对每个模块循环，每模块最多 15 轮。
+按 suggestedOrder 对每个模块循环。**无轮次上限**——只要 roofline 未达 90% 且
+仍有可尝试的方向，就继续优化；某模块卡住就转下一个模块或拓宽搜索，仅在目标
+达成或用户明确叫停时停止。轮次用**全局递增编号 N**（跨模块连续，不按模块分
+目录；目标模块写进文档内容里）。
+
+**每轮一个目录（本地，不 commit）**：本轮全部产物放进 `.rlcr/current/rounds/r<N>/`：
+- 文档：`direction.md`、`summary.md`、`analysis.md`
+- profile / 静态分析：`candidate.ptx`、`candidate-sass.txt`、`candidate.cubin`、
+  `candidate-res-usage.txt`、`candidate-nvdisasm.txt`、`candidate.ncu-rep`、
+  `candidate-details.txt`、`candidate-metrics.csv`
+
+`.rlcr/` 整个被 `.gitignore`，所以这些分析记录与数据**只留本地、不进 git**；
+**每轮只 commit `solution/` 代码**（交付物 `docs/results.md` 在 Finalize 时提交）。
+
 每轮你直接依次完成三件事：
 
 ### 7a. 实现优化（渐进式修改，严禁重写）
 
 **核心约束：每轮只做增量修改，不重写文件**
 
-1. 读 `modules/<id>/round-N-direction.md`（**必读**：hook 会拦截"未读方向就
+1. 读 `rounds/r<N>/direction.md`（**必读**：hook 会拦截"未读方向就
    Edit solution/"，没读这一步后面改不动）
 2. 如有上轮 P0/P1 issues 先修复
 3. **修改前**：
@@ -324,33 +337,37 @@ Reduction 分解、共享资源识别、优化顺序）。
 5. **修改后验证**：
    - `git diff -- solution/` — 检查所有改动
    - MODULE 内的改动：正常
-   - MODULE 外的改动：**每一处都必须在 round-N-summary.md 中说明因果关系**（"改了 X 是因为模块内改了 Y，导致 Z 接口不兼容"）。无法说明因果关系的外部改动 → 回退
+   - MODULE 外的改动：**每一处都必须在 rounds/r<N>/summary.md 中说明因果关系**（"改了 X 是因为模块内改了 Y，导致 Z 接口不兼容"）。无法说明因果关系的外部改动 → 回退
    - `python bench/correctness.py` — 正确性必须通过
    - `python bench/benchmark.py` — 记录性能
 6. **Regression check**：对比本轮 vs 上轮的整体 kernel 性能
    - 如果整体性能下降 > 5% 且不在预期内（direction.md 未预测到），立即 `git diff` 分析原因
    - 如果是其他模块被意外影响，`git checkout -- <affected files>` 回退非目标改动
-7. git commit: "<id> round N: <描述>"
-8. 写 `modules/<id>/round-N-summary.md`，其中包含本轮 diff 统计（改了哪些文件、多少行）
+7. git commit: "r<N> (<id>): <描述>" — **只提交 `solution/` 代码**（`.rlcr/` 不进 git）
+8. 写 `rounds/r<N>/summary.md`，其中包含本轮 diff 统计（改了哪些文件、多少行）
 
 ### 7b. Profile（NCU 实测 + 静态分析）
 
+本轮所有 profile/静态分析产物都写进本轮目录 `.rlcr/current/rounds/r<N>/`
+（本地，不 commit）。**5 类静态产物每轮都必须生成**，不可省略。
+
 ```bash
-mkdir -p .rlcr/current/profiles/<id>-rN
+mkdir -p .rlcr/current/rounds/r<N>
+RD=.rlcr/current/rounds/r<N>
 
 # NCU 实测
 ncu --set full --section PmSampling --section PmSampling_WarpStates --section SourceCounters \
-  -k "regex:<NAME>" -c 1 -o .rlcr/current/profiles/<id>-rN/candidate \
+  -k "regex:<NAME>" -c 1 -o $RD/candidate \
   python .rlcr/current/profiles/ncu_candidate_runner.py
-ncu --import .rlcr/current/profiles/<id>-rN/candidate.ncu-rep --page details > .rlcr/current/profiles/<id>-rN/candidate-details.txt
-ncu --import .rlcr/current/profiles/<id>-rN/candidate.ncu-rep --csv > .rlcr/current/profiles/<id>-rN/candidate-metrics.csv
+ncu --import $RD/candidate.ncu-rep --page details > $RD/candidate-details.txt
+ncu --import $RD/candidate.ncu-rep --csv > $RD/candidate-metrics.csv
 
-# 静态代码分析
-nvcc -ptx -lineinfo -arch=sm_<ARCH> <source.cu> -o .rlcr/current/profiles/<id>-rN/candidate.ptx
-nvcc -cubin -lineinfo -arch=sm_<ARCH> <source.cu> -o .rlcr/current/profiles/<id>-rN/candidate.cubin
-cuobjdump -sass .rlcr/current/profiles/<id>-rN/candidate.cubin > .rlcr/current/profiles/<id>-rN/candidate-sass.txt
-cuobjdump -res-usage .rlcr/current/profiles/<id>-rN/candidate.cubin > .rlcr/current/profiles/<id>-rN/candidate-res-usage.txt
-nvdisasm -gi -sf .rlcr/current/profiles/<id>-rN/candidate.cubin > .rlcr/current/profiles/<id>-rN/candidate-nvdisasm.txt
+# 静态代码分析（PTX / SASS / 资源占用 / 反汇编 —— 每轮必做）
+nvcc -ptx   -lineinfo -arch=sm_<ARCH> <source.cu> -o $RD/candidate.ptx
+nvcc -cubin -lineinfo -arch=sm_<ARCH> <source.cu> -o $RD/candidate.cubin
+cuobjdump -sass       $RD/candidate.cubin > $RD/candidate-sass.txt
+cuobjdump -res-usage  $RD/candidate.cubin > $RD/candidate-res-usage.txt
+nvdisasm  -gi -sf     $RD/candidate.cubin > $RD/candidate-nvdisasm.txt
 ```
 
 ### 7c. 分析 + 下一轮方向
@@ -381,26 +398,31 @@ nvdisasm -gi -sf .rlcr/current/profiles/<id>-rN/candidate.cubin > .rlcr/current/
    - nvdisasm 控制流图变化（分支、predicated execution）
    - **查 PTX ISA 文档**：解读指令变化、或本轮 direction 要换用某条 PTX 指令时，
      先到 `external/CudaSkill/.../ptx-docs/` 查其语义、操作数约束、fragment
-     layout、Target ISA Notes（SM 支持），再下结论。`round-N-analysis.md` 中
+     layout、Target ISA Notes（SM 支持），再下结论。`rounds/r<N>/analysis.md` 中
      涉及 PTX 指令选择的结论必须引用 ISA 文档章节号作为依据。
 
 5. **Strategy trajectory** — 是否偏离 roadmap（>10% → 修正策略）
 
-6. 写 `modules/<id>/round-N-analysis.md`（每条结论必须附 NCU metric 值或 SASS 指令证据）
+6. 写 `rounds/r<N>/analysis.md`（每条结论必须附 NCU metric 值或 SASS 指令证据）
 7. 按 verdict 决定下一步：
 
 | Verdict | 动作 |
 |---|---|
-| **CONTINUE** | 写 `round-(N+1)-direction.md`，继续下一轮 |
+| **CONTINUE** | 写 `rounds/r<N+1>/direction.md`，继续下一轮 |
 | **MODULE_COMPLETE** | 结束此模块，进入 Integration |
-| **MODULE_STALLED** × 5 | 跳到下一模块 |
+| **MODULE_STALLED** | 本模块持续无进展 → 转下一模块（不是停止；之后可回来再试） |
 | **STRATEGY_REVISION_NEEDED** | 重新分析瓶颈，更新 `global-strategy.md` 和模块顺序 |
 
 ### 停止条件
 
+**无轮次上限。** 只在以下情况结束/转向：
+
 - **roofline efficiency ≥ 90%** → 全部结束
-- 单模块连续 5 轮无进展 → 跳到下一模块
-- 所有模块完成 → 进入 Finalize
+- 某模块持续无进展 → 转去优化下一个模块（不是停止；之后可回来再试）
+- 所有模块都暂时无新方向 → **不要轻易判定"到顶"**：拓宽搜索空间（查
+  KernelWiki、PTX ISA 文档、公开资料/论文/开源 kernel）找新方向再试
+- 所有模块完成且 roofline 达标 → 进入 Finalize
+- 否则只要还有可尝试的方向就继续；**仅在目标达成或用户明确叫停时停止**
 
 ---
 
@@ -416,7 +438,7 @@ nvdisasm -gi -sf .rlcr/current/profiles/<id>-rN/candidate.cubin > .rlcr/current/
    - 如果是模块间干扰（如 shared memory 布局冲突、寄存器压力传导），写 `regression-analysis.md` 并修复
    - 修复后重新 benchmark 确认
 5. 更新 `module-tracker.json`、`goal-tracker.md`
-6. 写下一个模块的 `round-0-direction.md`
+6. 写下一轮方向 `rounds/r<N+1>/direction.md`（标明下一个目标模块）
 7. git commit
 
 ---

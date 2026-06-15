@@ -60,14 +60,17 @@ docs/           — 结果、方法笔记
 
 每一轮优化必须按顺序完成以下步骤，**缺任何一步不得进入下一轮**：
 
-1. **实现前**：读 `modules/<id>/round-N-direction.md`（首轮需先写）
+轮次用**全局递增编号 N**，每轮全部产物放进一个目录 `.rlcr/current/rounds/r<N>/`
+（本地，不 commit）：
+
+1. **实现前**：读 `rounds/r<N>/direction.md`（首轮需先写）
 2. **实现后**：`git diff` 检查 MODULE 边界 + 防重写机械检查
 3. **验证**：correctness 通过 + benchmark 记录
-4. **Profile**：NCU 实测 + PTX/SASS 静态分析，保存到 `profiles/<id>-rN/`
-5. **文档**：写 `modules/<id>/round-N-summary.md`（diff 统计 + 因果关系）
-6. **分析**：写 `modules/<id>/round-N-analysis.md`（NCU 数值 + SASS 证据 + verdict）
-7. **方向**：写 `modules/<id>/round-(N+1)-direction.md`（或标记模块完成）
-8. **提交**：git commit
+4. **Profile**：NCU 实测 + PTX/SASS 静态分析（5 类静态产物每轮必生成），保存到 `rounds/r<N>/`
+5. **文档**：写 `rounds/r<N>/summary.md`（diff 统计 + 因果关系）
+6. **分析**：写 `rounds/r<N>/analysis.md`（NCU 数值 + SASS 证据 + verdict）
+7. **方向**：写 `rounds/r<N+1>/direction.md`（或标记模块完成）
+8. **提交**：git commit（**只提交 `solution/` 代码**；`.rlcr/` 含每轮目录不进 git）
 
 **即使 context 被压缩、即使性能已达标、即使"看起来不需要"，都不能省略。
 这是硬约束，不是建议。违反时立即停下补齐再继续。**

@@ -86,17 +86,26 @@ def locked_campaign_root(raw: str, cwd: str | None) -> Path | None:
 
 
 def current_direction_file(root: Path) -> Path | None:
-    """Newest round-*-direction.md under modules/, else initial direction.md."""
-    try:
-        candidates = list((root / ".rlcr" / "current" / "modules").glob("*/round-*-direction.md"))
-    except OSError:
-        candidates = []
+    """Newest round direction file.
+
+    New layout: .rlcr/current/rounds/r<N>/direction.md  (one dir per round)
+    Legacy:     .rlcr/current/modules/<id>/round-*-direction.md
+    Fallback:   .rlcr/current/direction.md  (initial)
+    """
+    cur = root / ".rlcr" / "current"
+    candidates: list[Path] = []
+    for base, pattern in ((cur / "rounds", "r*/direction.md"),
+                          (cur / "modules", "*/round-*-direction.md")):
+        try:
+            candidates += list(base.glob(pattern))
+        except OSError:
+            pass
     if candidates:
         try:
             return max(candidates, key=lambda p: p.stat().st_mtime)
         except OSError:
             return candidates[0]
-    fallback = root / ".rlcr" / "current" / "direction.md"
+    fallback = cur / "direction.md"
     return fallback if fallback.exists() else None
 
 

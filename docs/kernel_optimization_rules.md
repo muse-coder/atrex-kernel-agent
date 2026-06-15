@@ -208,7 +208,7 @@ Hopper). The `-arch` flag must match the GPU being benchmarked.
 ### Recording
 
 When assembly analysis is performed, record findings in the round analysis
-file (`round-N-analysis.md`). Include: kernel name, register count, shared
+file (`.rlcr/current/rounds/r<N>/analysis.md`). Include: kernel name, register count, shared
 memory usage, key SASS patterns observed, and any actionable insight that
 informed the optimization direction.
 

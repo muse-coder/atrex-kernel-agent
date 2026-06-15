@@ -1,0 +1,26 @@
+# Standalone campaign repo .gitignore.
+# RLCR process state — per-round directories (rounds/r<N>/) holding
+# direction/summary/analysis docs and PTX/SASS/profile data — stays LOCAL ONLY.
+# Each round commits solution/ code; the round records and profiling data are
+# not committed. The deliverable lives in docs/results.md.
+.rlcr/
+
+# Profiling / build artifacts (large, regenerable — keep local).
+**/profiles/
+**/*.ncu-rep
+**/*.nsys-rep
+**/*.cubin
+**/*.fatbin
+**/*.ptx
+*.o
+*.so
+*.a
+build/
+
+# Python caches.
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Benchmark result logs (kept local).
+**/results.jsonl
