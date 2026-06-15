@@ -366,8 +366,10 @@ git commit。
    locked solution/ 的**任何** Write，包括新文件——所以必须先解锁，这是 marker
    的正常生命周期，不是绕过）。在 commit message / 文档里写明这是 authorized
    re-architecture。
-3. 新架构**写成 solution/ 下的新源文件**（如 `kernel_v2.cu`），保留旧实现供
-   对比，git 历史完整；不去 Write 覆盖旧文件本身。
+3. 新架构**写成 solution/ 下的新源文件**，文件名按**全局递增轮次编号**命名
+   （如 re-arch 发生在第 8 轮就叫 `<family>_r8.cu`，保持"文件名↔轮次"单调对应，
+   与 `rounds/r<N>/` 结构一致）。**不要**用 `v2`/`v3` 这类与轮次脱钩的名字。
+   保留旧实现供对比，git 历史完整；不去 Write 覆盖旧文件本身。
 4. 把 candidate ABI / adapter 切到新文件；旧文件在新版验证更快后用 `git rm` 删除。
 5. 新文件插 MODULE 标记，跑 correctness + benchmark，commit
    "re-architecture: <新架构> (initial)"，**重新 `touch .initial-impl-done`**
@@ -544,6 +546,12 @@ nvdisasm  -gi -sf     $RD/candidate.cubin > $RD/candidate-nvdisasm.txt
   KernelWiki、PTX ISA 文档、公开资料/论文/开源 kernel）找新方向再试
 - 所有模块完成且 roofline 达标 → 进入 Finalize
 - 否则只要还有可尝试的方向就继续；**仅在目标达成或用户明确叫停时停止**
+
+> **自主决策（不要为已授权的决定征求许可）**：本流程内的决定——继续下一轮、
+> 转模块、拓宽搜索、**乃至 STRATEGY_REVISION→re-architecture**——都已被本 skill
+> 授权，必须**自主执行，不要用 AskUserQuestion 去问用户"要不要做"**。即使某步
+> token/工作量很大（如换架构重写），也不是征求许可的理由——授权已经给了。只有
+> 遇到**真正越出任务范围的岔路**，或用户主动要求介入时，才停下来问。
 
 ---
 
