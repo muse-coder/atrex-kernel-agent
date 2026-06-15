@@ -161,6 +161,25 @@ architecture: when analysis shows the architecture itself cannot win, redesign
 and re-implement from scratch (a new candidate source file) — that is the correct
 action, not a violation.
 
+### No performance revert; commit every round; select best at finalize
+
+A performance regression does **not** trigger a rollback. Incremental
+optimization inevitably hits a step that lowers performance, but a further change
+*on top of* that step often turns it into a win (a local dip is not a dead end;
+e.g. an optimization that regresses standalone but composes into a win with a
+subsequent change). So:
+
+- **Do not** `git checkout`-revert on a performance regression. Analyze and
+  record why it regressed, commit the round, and keep moving forward (you may
+  build directly on the regressed version).
+- **Commit every round** (fast or slow). The git history is the safety net —
+  any round is recoverable, so no active revert is needed.
+- **Select the deliverable at finalization**: scan all committed rounds' bench
+  numbers and `git checkout` the correct-and-fastest one as the final solution.
+- The **only** exception is a correctness/compile failure: incorrect code cannot
+  be benchmarked, so restore the last working state (that is "fix to correct,"
+  not a performance revert).
+
 ## Benchmark And Evidence
 
 Use `docs/benchmark_template.py` as the timing harness starting point. Do not

@@ -16,8 +16,17 @@
    ——当分析表明架构本身赢不了时，必须 STRATEGY_REVISION→重新设计→从头实现新
    架构（合法，见 Step 4d 澄清与 Step 5）。
 2. **每次改动后 `git diff`**：确认改动范围与目标一致，非目标区域未被修改。
-3. **Regression guard**：每轮 benchmark 后对比上轮整体性能，退化 >5% 则停下分析，不继续下一轮。
-4. **不丢失历史**：每轮 commit 保留完整 git 历史，禁止 amend/rebase/force-push。
+3. **退化不回退（no performance revert）**：性能退化**不触发回退**。退化只是
+   数据——分析原因、记录，然后**继续前进**。允许直接在退化版本上叠加下一步：
+   增量优化必然遇到"某一步下降"，但**在那个下降的版本上再改一步往往就对了**
+   （局部低谷≠死路；如 ldmatrix-A 单独退化、与 warp-spec 组合就转正）。
+   **不做** `git checkout HEAD -- solution/` 式的性能回退。
+4. **每轮都 commit，git 历史即安全网**：每一轮（无论快慢）都 commit 保留完整
+   历史，禁止 amend/rebase/force-push。因为每轮都在历史里，**任何一轮都能取回**，
+   所以根本不需要主动回退。最优交付物在 **Finalize 时**从所有已提交轮次里按
+   benchmark 选出（`git checkout <最优 commit> -- solution/`，见 Step 9）。
+5. **唯一的例外是正确性/编译失败**：错的代码不能 benchmark，必须修到能跑对
+   （见"错误恢复流程"）。这是"修到正确"，不是"性能回退"。
 
 ### 错误恢复流程（编译失败 / 精度错误时）
 
@@ -26,10 +35,12 @@
 1. **读编译错误 / 精度 diff**，定位具体出错的行
 2. **用 Edit 做针对性修复**（只改报错相关的行），不要扩大修改范围
 3. 重新编译 / 跑精度测试
-4. 如果连续 3 次 Edit 修复仍然失败：
+4. 如果连续 3 次 Edit 修复仍然失败（**仅正确性/编译失败**，铁律 #5 的例外）：
    - `git diff HEAD -- solution/` 检查累积改动量
-   - 如果累积改动已经偏离太远，**`git checkout HEAD -- solution/` 回退到上次 commit 的状态**
-   - 重新读 direction.md，缩小优化目标，用更小的改动重试
+   - 如果累积改动已经偏离太远，`git checkout HEAD -- solution/` 回到上次能跑对的
+     commit（这是"修到正确"，因为错的代码无法 benchmark；不是性能回退）
+   - 重新读 direction.md，缩小目标，用更小的改动重试
+   - 注意：这只适用于编译/精度失败。**性能退化绝不回退**（铁律 #3）。
 5. **绝对禁止的行为**：
    - ❌ 编译不过 → Write 重写整个文件
    - ❌ 精度不对 → 把整个 kernel 函数重写
@@ -402,9 +413,11 @@ Reduction 分解、共享资源识别、优化顺序）。
    - MODULE 外的改动：**每一处都必须在 rounds/r<N>/summary.md 中说明因果关系**（"改了 X 是因为模块内改了 Y，导致 Z 接口不兼容"）。无法说明因果关系的外部改动 → 回退
    - `python bench/correctness.py` — 正确性必须通过
    - `python bench/benchmark.py` — 记录性能
-6. **Regression check**：对比本轮 vs 上轮的整体 kernel 性能
-   - 如果整体性能下降 > 5% 且不在预期内（direction.md 未预测到），立即 `git diff` 分析原因
-   - 如果是其他模块被意外影响，`git checkout -- <affected files>` 回退非目标改动
+6. **Regression check（分析，不回退）**：对比本轮 vs 上轮整体性能
+   - 如果整体性能下降 > 5% 且不在预期内（direction.md 未预测到），立即 `git diff`
+     分析原因并写进 analysis.md。**但不回退**（铁律 #3）——commit 本轮，继续前进；
+     下一轮可在此基础上叠加（局部下降常被后续修改转正）。最优版在 Finalize 选出。
+   - 仅当某改动**破坏正确性**时才 `git checkout`（错误恢复流程，铁律 #5 例外）。
 7. git commit: "r<N> (<id>): <描述>" — **只提交 `solution/` 代码**（`.rlcr/` 不进 git）
 8. 写 `rounds/r<N>/summary.md`，其中包含本轮 diff 统计（改了哪些文件、多少行）
 
@@ -507,7 +520,13 @@ nvdisasm  -gi -sf     $RD/candidate.cubin > $RD/candidate-nvdisasm.txt
 
 ## Step 9: Finalize
 
+0. **选出最优版本（因为不回退，最优不一定是 HEAD）**：扫所有已提交轮次的
+   benchmark 记录，挑出**正确且最快**的那一轮 commit。若它不是 HEAD，
+   `git checkout <最优 commit> -- solution/`（或在其上 cherry-pick 后续仍有效的
+   修改）把它定为交付物，并重新 benchmark 确认。记录"哪一轮胜出 + 为什么"。
+   （配合铁律 #3 退化不回退：过程允许走低谷，最优在此一次性选出。）
 1. 写 `docs/results.md`：
+   - 最优版本是哪一轮、对比各轮 benchmark（含走过的低谷，体现 no-revert 探索）
    - Per-module contribution breakdown
    - Theory accuracy summary
    - Final per-shape performance, geomean speedup
