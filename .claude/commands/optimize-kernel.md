@@ -234,8 +234,11 @@ git commit。
 5. `python bench/benchmark.py` — 记录结果
 6. git commit: "initial kernel implementation"
 7. **创建渐进式修改锁**：`touch .rlcr/current/.initial-impl-done`
-   - 此 marker 一旦存在，Write 工具写 solution/ 会被 hook 拦截，git commit 会检查重写模式
-   - 后续所有 solution/ 改动必须用 Edit
+   - 此 marker 一旦存在，项目 PreToolUse hook
+     (`.claude/hooks/block_solution_rewrite.py`)会**拦截**对该 campaign
+     `solution/` 的 Write 覆盖，以及 shell 重写（`>`/`>>`/`tee`/`sed -i` 等
+     重定向到 solution/）。marker 不存在时不拦截（首次实现照常）。
+   - 后续所有 solution/ 改动必须用 Edit（Edit/MultiEdit 不被拦截）
 8. 写 `.rlcr/current/initial-implementation-summary.md`
 
 ---

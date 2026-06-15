@@ -192,12 +192,16 @@ if [[ "${IK_BOOTSTRAP_DRAFT:-1}" != "0" ]]; then
   if [[ ! -f "$DRAFT_FILE" ]]; then
     {
       cat <<EOF
-# RLCR Plan Draft — ${TASK_SLUG}
+# Task Context — ${TASK_SLUG}
 
-This is the optimization plan draft for the kernel task in this directory.
-Review and refine it, then start the RLCR loop with:
+This file collects the task context for this kernel campaign. Open Claude Code
+in this worktree and start the optimization in one command:
 
-  /project:rlcr .rlcr/plan.md --base-branch ${REVIEW_BASE}
+  /optimize-kernel <describe the kernel from the Source Prompt below>
+
+The command runs the whole flow inline (no Workflow, no subagents) and creates
+the campaign's standalone git repo under /tmp/<slug>/. See
+.claude/commands/optimize-kernel.md for the full step list.
 
 ## Source Prompt
 
@@ -250,10 +254,9 @@ echo
 echo "== Claude project root =="
 echo "$PWD"
 echo
-echo "Draft: .rlcr/draft.md"
-echo "Inside Claude Code, refine the draft into a plan, then start the loop:"
-echo "  1. Review and edit .rlcr/draft.md → save as .rlcr/plan.md"
-echo "  2. /project:rlcr .rlcr/plan.md --base-branch $REVIEW_BASE"
+echo "Context: .rlcr/draft.md"
+echo "Inside Claude Code, start the optimization in one command:"
+echo "  /optimize-kernel <describe the kernel from prompt.md>"
 echo
 
 if [[ "${IK_NO_CLAUDE:-}" == "1" ]]; then

@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR}/.claude/hooks/block_solution_rewrite.py\"",
+            "statusMessage": "IterKernel solution rewrite guard",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

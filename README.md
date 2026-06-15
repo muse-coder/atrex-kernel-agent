@@ -24,10 +24,11 @@ templates/                     任务模板
     bench/.gitkeep
     docs/.gitkeep
 
-campaigns/operators/           你的 kernel 优化任务放这里
+campaigns/operators/           campaign 目录占位（只保留 .gitkeep，
+                               实际 kernel 代码在 /tmp/<slug>/ 独立 repo）
 
-scripts/                       启动脚本
-  launch_task.sh                 通用任务启动器（建 worktree + 起 Claude + RLCR）
+scripts/                       可选 worktree 启动器
+  launch_task.sh                 为 agent 仓库建隔离 worktree 并起 Claude
   launch_tasks/                  每个任务一个启动脚本
 
 external/                      知识子模块（可选）
@@ -57,42 +58,36 @@ pip 预编译 wheel（版本滞后）,也不要用 JIT 模式（运行时编译�
 
 ## 快速开始
 
-### 1. 创建一个 kernel 优化任务
-
-```bash
-cp -r templates/example_task campaigns/operators/b200_my_kernel__multi_shape
-
-# 编辑任务卡和配置
-vim campaigns/operators/b200_my_kernel__multi_shape/prompt.md
-vim campaigns/operators/b200_my_kernel__multi_shape/config.toml
-```
-
-### 2. 启动 agent
-
-```bash
-scripts/launch_task.sh campaigns/operators/b200_my_kernel__multi_shape
-```
-
-设置 `IK_NO_CLAUDE=1` 只准备 worktree 不起 Claude。
-
-### 3. 在 Claude Code 内启动 RLCR 循环
-
-启动器会生成 `.rlcr/draft.md`（包含任务卡和约束）。先检查并完善它，保存为
-`.rlcr/plan.md`，然后启动循环：
+在 IterKernel 仓库根目录打开 Claude Code，直接运行 slash 命令：
 
 ```text
-/project:rlcr .rlcr/plan.md --base-branch <printed-ik-base-branch>
+/optimize-kernel <kernel 描述>
 ```
 
-这会启动一个 Ultracode Workflow，自动迭代直到达到停止条件：
-- **Roofline efficiency ≥ 90%** → 优化成功，停止
-- **连续 50 轮无进展** → 卡住，停止
+例如：
 
-无轮次上限，只要有进展就继续优化。全部在 Claude Code 内部闭环，无外部依赖。
+```text
+/optimize-kernel 在 RTX PRO 5000 上优化 M=1024 的 FP8 GEMM，baseline 用 FlashInfer AOT
+```
+
+命令会由**单个 agent 在当前对话内闭环**完成整个优化流程（不调 Workflow、
+不 spawn subagent，完整步骤见 `.claude/commands/optimize-kernel.md`）：
+
+1. 理解需求、检测目标 GPU（`nvidia-smi`）、推断 workload shapes
+2. 为该 campaign 创建**独立 git 仓库** `/tmp/<slug>/`；在 agent 仓库
+   `campaigns/operators/<slug>/` 只保留目录结构（`.gitkeep`）
+3. Profile baseline（NCU 实测 + PTX/SASS 静态分析）
+4. 分析瓶颈、设计 kernel 架构、模块分解（`// MODULE: <id>` 标记）
+5. 从零实现 CUDA C++ kernel（PTX inline asm，DeepGEMM 风格薄封装）
+6. 进入 RLCR 模块循环，逐模块增量迭代直到达到停止条件
+
+所有 kernel 代码的修改和 commit 都发生在 `/tmp/<slug>/` 独立 repo 中，
+不提交到 agent 仓库（见 CLAUDE.md「Kernel 代码仓库隔离」）。
 
 ## 任务生命周期
 
-每个 kernel 优化任务的目录结构：
+每个 campaign 在 `/tmp/<slug>/` 独立 git 仓库中进行（kernel 代码不提交到
+agent 仓库）。独立 repo 的目录结构：
 
 ```text
 prompt.md       任务卡：要优化什么 kernel、约束、第一里程碑
@@ -101,6 +96,7 @@ baseline/       参考实现（对照组）
 solution/       你的优化版本
 bench/          独立 benchmark + 正确性 harness
 docs/           run log、profile 笔记、结果、决策记录
+.rlcr/          RLCR 循环状态与每轮记录
 ```
 
 核心原则是**对称**：baseline 和 candidate 通过相同的本地接口、固定 workload、
@@ -108,25 +104,38 @@ docs/           run log、profile 笔记、结果、决策记录
 
 ## RLCR 迭代循环
 
-使用 Claude Code 内置 subagent 驱动（`/project:rlcr`），不依赖外部工具：
+`/optimize-kernel` 在 Step 7 进入逐模块的 RLCR 迭代，由同一个 agent 在对话内
+顺序完成，每一轮：
 
-1. **Coder subagent** — 写/改 `solution/kernel.cu`，跑 correctness + benchmark
-2. **Analyst subagent** — 审查 diff + 跑 NCU profiling + roofline 分析 → 找瓶颈 →
-   给出 P0-P3 问题列表 + 下一步优化方向 + roofline efficiency + verdict
-3. **Workflow 循环** — 程序化控制：efficiency ≥ 90% 则成功停止，连续 50 轮无进展
-   则停止，无轮次上限
+1. **实现** — 读 `round-N-direction.md`，对目标 MODULE 做**增量 Edit**
+   （严禁 Write 覆盖 `solution/` 文件），跑 correctness + benchmark
+2. **Profile** — NCU 实测 + PTX/SASS 静态分析，存入 `profiles/<id>-rN/`
+3. **分析** — 综合 NCU/SASS 证据写 `round-N-analysis.md`，给出 verdict 与
+   下一轮 `round-(N+1)-direction.md`
+
+每轮 8 步硬约束（不可跳过）见 CLAUDE.md「RLCR 每轮硬约束」。
+
+停止条件：
+- **roofline efficiency ≥ 90%** → 优化成功，全部结束
+- 单模块**连续 5 轮**无进展 → 跳到下一模块
+- 单模块最多 **15 轮**
+- 所有模块完成 → 进入 Integration + Finalize
 
 每轮迭代开始前必须刷新上下文：任务卡、当前 benchmark 证据、KernelWiki。
-状态和每轮记录保存在 `.rlcr/<timestamp>/` 目录下。
+RLCR 状态保存在独立 repo 的 `.rlcr/current/` 目录下。
 
-## 环境变量
+## 可选：worktree 启动器
+
+日常使用直接在仓库根运行 `/optimize-kernel` 即可。`scripts/launch_task.sh`
+是一个可选便捷启动器：为 agent 仓库创建隔离 git worktree 并在其中起 Claude
+Code，你再在里面运行 `/optimize-kernel`。环境变量：
 
 ```bash
 IK_BASE_BRANCH=<ref>          # worktree 的基准分支（默认当前分支）
 IK_NO_CLAUDE=1                # 只建 worktree 不起 Claude
 IK_BASH_BIN=/path/to/bash     # 指定 bash 4+（macOS 3.2 不支持）
-CLAUDE_MODEL=opus              # Claude 模型（默认 opus）
-CLAUDE_EFFORT=max              # Claude effort（默认 max）
+CLAUDE_MODEL=opus             # Claude 模型（默认 opus）
+CLAUDE_EFFORT=max             # Claude effort（默认 max）
 ```
 
 ## 外部知识（可选）
