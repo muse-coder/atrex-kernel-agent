@@ -272,7 +272,17 @@ specialization、无 ldmatrix。打算靠 RLCR 逐轮爬。结果：初版 0.45x
 
 ## 10. PTX / SASS 静态分析的正确读法（产物体量、计数陷阱、跨轮对比）
 
-实测于 RTX PRO 5000 sm_120 fp8 GEMM campaign（r25–r28），每条都有数据支撑。
+> ⚠️ **架构限定：本节所有具体助记符与行为均为 sm_120（RTX PRO 5000, Blackwell
+> 消费级）+ CUDA 13 实测，不要照搬到别的架构。** 跨架构会变的至少有：
+> - **MMA 指令名**：sm_120 是 `QMMA`（PTX `mma.sync … .e4m3`）；sm_90 Hopper 是
+>   `HGMMA/WGMMA`（`wgmma.mma_async`）；sm_100 是 tcgen05（`OMMA`/tmem）。本节的
+>   `QMMA`、`FILLER@!UPT`、填充/QMMA≈0.81、`.reuse` 等都是 sm_120 的形态。
+> - **FP 收缩/强度削减**（见 10.4 末）是 nvcc/ptxas 13 在 sm_120 上的选择。
+> - **`cutlass` 命名启发式**（10.5）是 sm_120 ptxas 实测的 ~+2%，别处未必成立。
+> 方法学（grep 定位、直方图 Δ、归一化三类噪声、PTX 判对错/SASS 判快慢）跨架构通用；
+> 具体指令名/数值不通用——换架构要重新 `cuobjdump -sass` 实测确认。
+>
+> 以下数据均出自 RTX PRO 5000 sm_120 fp8 GEMM campaign（r25–r28），每条都有支撑。
 
 ### 10.1 产物动辄上万行 → 禁止整文件读入 context，必须 grep 定位 + sed 切片
 一个 12K 的 `.cu` 编出来：`candidate.ptx` ~11.6K 行 / `candidate-sass.txt` ~5.5K 行 /
@@ -307,6 +317,15 @@ nvdisasm（最大）一般不整看，只按需 grep 某个分支。
 看「类别对应」不看行数：源码 24 行的改动 PTX 可能差 1000 行（`[16]` 数组 + 循环展开 +
 基本块 `$L__BB0_NN` 重排放大），但每类都能映射回源码构造（如 `seg/order[16]` →
 `__local_depot0` + `st.local`/`ld.local`，正好对上 SASS 里的 spill）。
+
+**关键陷阱：别按「我以为该出哪条指令」判，要看编译器实际降成了什么（sm_120/CUDA13 实测）。**
+做了 5 组受控改动核对源码↔PTX，4 组直接命中（纯改名→指令体 0 变化；`STAGES 3→2`→
+`setp …,3` 变 `…,2`；删 `__syncwarp()`→`bar.warp.sync` 14→0；`GRID_CTAS 110→55`→
+`add.s32 …,110` 变 `…,55`），但**第 5 组踩坑**：epilogue 给每个输出 `* 2.0f`，预测
+`+mul.f32`，结果 `mul.f32` 计数纹丝不动、**多出 128 条 `fma.rn.f32`**——nvcc 把
+`v*sa*sb*2.0` 整条乘法链**收缩成了 FMA**（FP contraction）；`*2.0` 也可能被强度削减成
+`add`（x+x）。所以核对浮点改动要**把 mul/fma/add 整类一起数**，否则会误判成「改动没进
+IR」（其实进了，只是换成了等价指令）。整型同理可能被 `lea`/`shf`/`mad` 改写。
 
 ### 10.5 PTX 判「对不对」，SASS 判「快不快」——分工与一个关键反例
 - PTX = 前端降级结果（ptxas 之前）：看指令选择对不对（`mma.sync` 形状、`ldmatrix`、TMA）、
