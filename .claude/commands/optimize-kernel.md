@@ -128,6 +128,19 @@ git diff HEAD -- solution/ | head -100
   版本、入口与选择理由。不得用弱 baseline 取巧。baseline 与 candidate 必须对称
   ABI/计时（均 destination-passing,无单边多余开销）。
 - **特殊约束**：dtype、精度要求、是否 fused 等
+- **完成目标（PRIMARY，必须显式设定并写进 goal-tracker）**：**达到该算子在本
+  GPU 上 spec 峰值的 ≥90%**（roofline efficiency ≥ 90%）。从硬件 spec 算出目标
+  TF 与 µs（如 sm_120 FP8 峰值 516 TF → 目标 ≥464 TF / ≤t_floor/0.9）。
+  - **这是完成判据,不是 baseline。** baseline(最强现成库)只是**对比参照**,
+    用来判断"赢没赢现成实现",**不是完成线**。
+  - **关键:90% 峰值常常 > baseline 实测效率**(库实现往往只到峰值的 85-90%)。
+    所以「打平 baseline」**通常不等于**「达到 90% 峰值」——后者更高,可能要求
+    **超过 baseline**。两个数都要在 goal-tracker 里写清楚(目标=90%峰值;参照=
+    baseline),**不要把"打平 baseline"误当成完成**。
+  - 若实测发现连 SOTA 库都远低于 90%(如 88%),说明 90% 对该 shape 可能触及
+    物理上限:此时如实告知用户"90% 可能不可达、当前 SOTA=X%",由用户决定是否
+    放宽目标——但在得到用户确认前,仍以 90% 峰值为目标继续推进(wave-quant/
+    stream-K、调度等所有杠杆都要试)。
 
 如果 kernel 类型不明确，直接问用户。
 
