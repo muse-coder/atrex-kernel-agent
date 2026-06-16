@@ -281,9 +281,10 @@ layout、cp.async/TMA、ldmatrix、mbarrier、cache 修饰符、指令的 SM 版
 ### 4d. 设计 Kernel 架构
 
 > **核心原则：第一步就把设计做到上限（design to the ceiling）。**
-> 初始架构必须直接奔着性能上限去——**从第一版就采用打赢目标 baseline 所必需
+> 目标是 **≥90% spec 峰值**（不是"追平 baseline"——目标本就高于 baseline）。
+> 初始架构必须直接奔着这个峰值去——**从第一版就采用达到 ≥90% 峰值所必需
 > 的全部核心技术**（如 warp specialization、ldmatrix、TMA、最优 tile/swizzle、
-> 异步流水线等）。**严禁**先设计一个"correctness-first 的简单版"再指望靠 RLCR
+> 异步流水线、stream-K 消除 wave quantization 等）。**严禁**先设计一个"correctness-first 的简单版"再指望靠 RLCR
 > 渐进爬上去：核心架构技术（warp 角色划分、ldmatrix vs 手写 LDS、同步机制）是
 > **架构骨架,不是后期能 bolt-on 的 tweak**——简单架构的效率天花板是焊死的,
 > 后续每轮只会在那个被焊死的上限里找局部最优,永远赢不了。RLCR 迭代是在一个
@@ -301,21 +302,26 @@ layout、cp.async/TMA、ldmatrix、mbarrier、cache 修饰符、指令的 SM 版
 #### 4d-ceiling. 结构上限分析（强制门槛，不可跳过）
 
 在 roofline（硬件算力/带宽下限）之外，**必须额外推导"所选候选架构本身的效率
-上限"**，并与 baseline 的实测效率对比：
+上限"**，并与 **≥90% spec 峰值这个目标**对比（baseline 只是必须超过的下限参照,
+不是目标线）：
 
 1. **硬件 roofline**：compute floor / memory floor（标注 compute/memory bound）。
+   算出 **90% 峰值的目标 TF / µs**。
 2. **结构上限（structural ceiling）**：**这个具体架构**最多能到峰值的百分之几？
-   逐项问：
+   逐项问（每条扣多少效率,凑出结构上限百分比）：
    - 加载与计算是否被 per-step 全块 barrier 串行化？（→ 上限被 barrier 压低）
    - fragment 取数有无 bank conflict / 是否用了 ldmatrix？
-   - occupancy 被什么 cap（寄存器/smem）？能否藏住延迟？
-   - 是否复刻了 baseline 达到其效率所用的关键技术？缺哪条、各扣多少效率？
-3. **决策门槛**：若 `结构上限 < baseline 实测效率`（或 < roofline 90% 目标），
-   则**当前设计注定打不赢——禁止进入 Step 5**。必须回到本步重新设计,补齐
-   baseline 的使能技术,直到结构上限 ≥ 目标,再实现。
-4. 若判断"打赢 baseline 必须做重写级工作"（如必须 warp-specialized + ldmatrix
-   从头实现），**在此处就明确写出来并告知用户**工作量与取舍,而不是先写一版
-   注定输的简单实现。
+   - occupancy / 寄存器墙能否藏住 MMA 延迟（运行时 wait）？
+   - **wave quantization**：#CTA 能否整除 #SM？凑不齐就要 stream-K/persistent,否则
+     尾波损失（如本例 110=2·5·11,而 2^a·5^b 的 tile 永远凑不成 110 倍数 → 必失 ~3%）。
+   - 还缺哪些把峰值利用率推到 90% 的技术？
+3. **决策门槛**：若 `结构上限 < 90% 峰值`，则**当前设计达不到目标——禁止进入
+   Step 5**。必须回到本步重新设计,补齐使能技术,直到结构上限 ≥ 90% 峰值,再实现。
+   （同时结构上限必须 > baseline,否则连现成实现都赢不了。）
+4. 若判断"达到 90% 峰值必须做重写级工作"（如 warp-specialized + ldmatrix + stream-K
+   从头实现），**在此处就明确写出来并告知用户**工作量与取舍。若连 SOTA 库都
+   远低于 90%(实测得知),说明 90% 可能触及该 shape 物理上限——如实告知用户当前
+   SOTA 百分比,由用户决定是否放宽,在确认前仍以 90% 为目标。
 
 把硬件 roofline + 结构上限 + 决策结论写进 `.rlcr/current/kernel-architecture.md`。
 
