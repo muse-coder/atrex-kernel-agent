@@ -376,23 +376,21 @@ git commit。
 
 ### 重新实现（re-architecture，当 4d-ceiling 或 Step 7 判定需换架构时）
 
-这是合法且必要的，不是"被禁止的重写"。re-architecture = 一次**新的 Step 5 首次
-实现**，所以它合法地重置迭代锁（防重写 marker 管的是"迭代期"，不是"换架构"）。
-流程：
+这是合法且必要的，不是"被禁止的重写"。re-architecture = 写一个**全新的源文件**。
+**锁全程保持上锁,不要 `rm`** —— hook 已改为「只拦覆盖已存在文件、放行新文件」,
+所以写新架构文件本来就放行,无需也**不要**摘锁(摘了忘补回来 = 纪律静默失效,
+这正是历史踩过的坑)。流程：
 1. 先更新 `.rlcr/current/kernel-architecture.md`：写清"为何旧架构上限不够"
-   （引用结构上限分析 + 实测证据）与新架构如何达到目标上限。
-2. **显式重置迭代锁**：`rm .rlcr/current/.initial-impl-done`（hook 会拦截对
-   locked solution/ 的**任何** Write，包括新文件——所以必须先解锁，这是 marker
-   的正常生命周期，不是绕过）。在 commit message / 文档里写明这是 authorized
-   re-architecture。
-3. 新架构**写成 solution/ 下的新源文件**，文件名按**全局递增轮次编号**命名
-   （如 re-arch 发生在第 8 轮就叫 `<family>_r8.cu`，保持"文件名↔轮次"单调对应，
-   与 `rounds/r<N>/` 结构一致）。**不要**用 `v2`/`v3` 这类与轮次脱钩的名字。
-   保留旧实现供对比，git 历史完整；不去 Write 覆盖旧文件本身。
-4. 把 candidate ABI / adapter 切到新文件；旧文件在新版验证更快后用 `git rm` 删除。
-5. 新文件插 MODULE 标记，跑 correctness + benchmark，commit
-   "re-architecture: <新架构> (initial)"，**重新 `touch .initial-impl-done`**
-   重新上锁，然后对**新文件**进入 Step 6/7 的渐进迭代。
+   （引用结构上限分析 + 实测证据）与新架构如何达到 ≥90% 峰值目标。
+2. 新架构**直接 Write 一个新源文件**（锁开着也放行,因为是新文件不是覆盖），
+   文件名按**全局递增轮次编号**命名（如 re-arch 在第 8 轮就叫 `<family>_r8.cu`，
+   保持"文件名↔轮次"单调对应）。**不要**用 `v2`/`v3` 这类与轮次脱钩的名字，
+   **也不要** `rm`/`touch` 那个锁。保留旧实现供对比；绝不 Write 覆盖旧文件本身
+   （覆盖已存在文件仍被 hook 拦）。
+3. 把 candidate ABI / adapter 切到新文件；旧文件在新版验证更快后用 `git rm` 删除。
+4. 新文件插 MODULE 标记，跑 correctness + benchmark，写 `rounds/r<N>/` 的
+   direction/summary/analysis + 5 类 SASS 产物，commit "re-architecture: <新架构>
+   (initial)"，然后对**新文件**进入 Step 6/7 的渐进迭代（锁一直在,hook 全程强制）。
 
 ---
 

@@ -44,8 +44,10 @@ DIRECTION_READ_MARKER_REL = (".rlcr", "current", ".direction-read-marker")
 
 REWRITE_REASON = (
     "🔒 渐进式修改锁已激活（{root}/.rlcr/current/.initial-impl-done 存在）。"
-    "solution/ 首次实现后只能用 Edit 增量修改，禁止 Write 覆盖或 shell 重定向重写。"
+    "禁止用 Write 覆盖**已存在**的 solution/ 文件（既定架构内只能用 Edit 增量修改）。"
     "若要回退请用 `git checkout HEAD -- solution/`，再用小步 Edit 重试。"
+    "（注：re-architecture 写**新文件**是放行的——直接 Write 新的轮次编号源文件即可，"
+    "无需也不要 `rm` 这个锁。）"
 )
 
 DIRECTION_REASON = (
@@ -75,6 +77,24 @@ def emit_deny(reason: str) -> int:
     return 0
 
 
+def emit_warn(msg: str) -> None:
+    """Non-blocking: inject a warning into the model context (allows the tool)."""
+    print(json.dumps({
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "additionalContext": msg,
+        }
+    }, ensure_ascii=False))
+
+
+UNLOCKED_WARN = (
+    "⚠️ 渐进式修改锁缺失：{root}/.rlcr/current/.initial-impl-done 不存在,但该 "
+    "campaign 已进入迭代(存在 rounds/r<N>/)。说明锁在某次 re-arch 摘掉后没补回来,"
+    "防重写 / 先读 direction / SASS 硬门槛**当前全部失效**。请立刻 "
+    "`touch {root}/.rlcr/current/.initial-impl-done` 恢复纪律,再继续改 solution/。"
+)
+
+
 def resolve_path(raw: str, cwd: str | None) -> Path:
     p = Path(raw.strip().strip('"').strip("'")).expanduser()
     if not p.is_absolute() and cwd:
@@ -98,6 +118,32 @@ def locked_campaign_root(raw: str, cwd: str | None) -> Path | None:
             if root.joinpath(*MARKER_REL).exists():
                 return root
     return None
+
+
+def campaign_root_for_solution(raw: str, cwd: str | None) -> Path | None:
+    """Return the campaign root for any path under a ``solution`` segment,
+    regardless of lock state (used for the unlocked-state warning)."""
+    if not raw or "solution" not in raw:
+        return None
+    parts = resolve_path(raw, cwd).parts
+    for i, seg in enumerate(parts):
+        if seg == "solution" and i > 0:
+            return Path(*parts[:i])
+    return None
+
+
+def unlocked_but_iterating(root: Path) -> bool:
+    """True if the lock marker is MISSING yet the campaign is already past the
+    initial impl (>=1 rounds/r<N>/ dir exists). That is the 'lock got dropped and
+    never restored' state -> enforcement is silently off. Not triggered during the
+    pre-initial-impl phase (no rounds dirs yet) to avoid false positives."""
+    if root.joinpath(*MARKER_REL).exists():
+        return False
+    rounds = root / ".rlcr" / "current" / "rounds"
+    try:
+        return any(re.fullmatch(r"r\d+", d.name) and d.is_dir() for d in rounds.iterdir())
+    except OSError:
+        return False
 
 
 def current_direction_file(root: Path) -> Path | None:
@@ -191,16 +237,33 @@ def handle_pre_tool_use(payload: dict) -> int:
     cwd = payload.get("cwd")
 
     if tool == "write":
-        root = locked_campaign_root(tool_input.get("file_path", ""), cwd)
-        return emit_deny(REWRITE_REASON.format(root=root)) if root else 0
+        fp = tool_input.get("file_path", "")
+        root = locked_campaign_root(fp, cwd)
+        if root is not None:
+            # Allow creating a NEW file (re-architecture writes a new round-numbered
+            # source) — there is nothing to "rewrite". Only block OVERWRITING an
+            # existing solution file (the lazy full-file-rewrite the lock guards
+            # against). This removes the need to ever `rm` the lock for a re-arch.
+            if resolve_path(fp, cwd).exists():
+                return emit_deny(REWRITE_REASON.format(root=root))
+            return 0
+        # unlocked-state safety net
+        wroot = campaign_root_for_solution(fp, cwd)
+        if wroot is not None and unlocked_but_iterating(wroot):
+            emit_warn(UNLOCKED_WARN.format(root=wroot))
+        return 0
 
     if "bash" in tool:
         root = bash_overwrite_root(tool_input.get("command", ""), cwd)
         return emit_deny(REWRITE_REASON.format(root=root)) if root else 0
 
     if "edit" in tool:  # Edit / MultiEdit
-        root = locked_campaign_root(tool_input.get("file_path", ""), cwd)
+        fp = tool_input.get("file_path", "")
+        root = locked_campaign_root(fp, cwd)
         if root is None:
+            wroot = campaign_root_for_solution(fp, cwd)
+            if wroot is not None and unlocked_but_iterating(wroot):
+                emit_warn(UNLOCKED_WARN.format(root=wroot))
             return 0
         cur = direction_unread(root)
         if cur:
