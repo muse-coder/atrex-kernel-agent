@@ -267,3 +267,55 @@ specialization、无 ldmatrix。打算靠 RLCR 逐轮爬。结果：初版 0.45x
 - `cp.async.bulk.tensor.2d ... mbarrier::complete_tx::bytes`（TMA）：✅
 - `cvt.rn.satfinite.e4m3x2.bf16x2`：❌（ptxas 不收），用 bf16→f32(`bits<<16`)→
   `cvt.e4m3x2.f32`。
+
+---
+
+## 10. PTX / SASS 静态分析的正确读法（产物体量、计数陷阱、跨轮对比）
+
+实测于 RTX PRO 5000 sm_120 fp8 GEMM campaign（r25–r28），每条都有数据支撑。
+
+### 10.1 产物动辄上万行 → 禁止整文件读入 context，必须 grep 定位 + sed 切片
+一个 12K 的 `.cu` 编出来：`candidate.ptx` ~11.6K 行 / `candidate-sass.txt` ~5.5K 行 /
+`candidate-nvdisasm.txt` ~15K 行（因为 `#pragma unroll` 把 5 处 mma 调用展开成 448 条
+QMMA）。整读会撑爆 context。正确做法：
+1. `grep -nE 'QMMA|LDSM' file` 找热循环 + 回边地址（`@P0 BRA 0x….`）；
+2. `sed -n '<lo>,<hi>p'` 只切热循环体那一两千行；
+3. `grep -c` 统计指令类；只把 ~100 行稳态发射片段读进 context 做因果判断。
+nvdisasm（最大）一般不整看，只按需 grep 某个分支。
+
+### 10.2 NOP 计数陷阱：ptxas 的调度填充不是字面 `NOP`
+判「填充/QMMA 比」时，`grep '\bNOP\b'` 会严重漏数——ptxas 真正插的发射填充是
+**`@!UPT UIADD3 URZ`**（谓词关掉、写 URZ 的哑指令）。本 campaign 主循环字面 NOP 仅 4，
+但 `@!UPT…URZ` 有 204，真实填充/QMMA ≈ 0.81（不是误算的 0.34）。统计调度密度必须把
+这类哑指令算进去（`scripts/sass_hist_diff.sh` 已把它单列为 `FILLER@!UPT`）。
+
+### 10.3 跨轮对比：SASS 用「指令直方图」，PTX 用「归一化逐行」，都别裸 diff
+- **裸 diff 无效**：SASS 带 `/* 0x.. */` 编码列 + 物理寄存器号 + 地址 + ptxas 重排，
+  两版 5.5K 行 SASS 裸 diff 7900+ 行，全是噪声。
+- **SASS → 指令类别直方图 Δ**：`scripts/sass_hist_diff.sh <轮A> <轮B>`。一眼读出改动
+  落在哪类指令（如 warp-spec epilogue 那轮：`STS +64 / STG −24 / BAR +2 / FMUL −96`，
+  即 scale/convert/store 搬离了 MMA warp）。这是判「这轮改动是否如预期」的主工具。
+- **PTX → 归一化逐行**：`scripts/ptx_diff.sh <A.ptx> <B.ptx>`。
+
+### 10.4 PTX 前后对比的三类噪声（必须先归一化，否则真改动被淹）
+1. **虚拟寄存器编号** `%r/%rd/%f/%p`：最大噪声源，归一化后实测降 ~8.5x（6134→734 行）。
+   —— 注意：关 `-lineinfo`（去 `.loc`）几乎没用（只降 1.5%），`.loc` 在 diff 里自对齐；
+   **降噪靠归一化寄存器，不是关 lineinfo**。
+2. **内部文件名哈希符号** `_INTERNAL_<hash>_<n>_<file>_cu_<hash>`：thrust/cuda::std 注入，
+   **只要换源文件名就全变**，与改动无关 → 折叠掉，或两版用同一文件名编。
+3. **Itanium mangling 长度前缀** `_ZN39…` vs `_ZN44…`：改成不同长度的名字会牵动。
+看「类别对应」不看行数：源码 24 行的改动 PTX 可能差 1000 行（`[16]` 数组 + 循环展开 +
+基本块 `$L__BB0_NN` 重排放大），但每类都能映射回源码构造（如 `seg/order[16]` →
+`__local_depot0` + `st.local`/`ld.local`，正好对上 SASS 里的 spill）。
+
+### 10.5 PTX 判「对不对」，SASS 判「快不快」——分工与一个关键反例
+- PTX = 前端降级结果（ptxas 之前）：看指令选择对不对（`mma.sync` 形状、`ldmatrix`、TMA）、
+  unroll、源码有没有被翻译对。**性能信号在 PTX 里全是 0**（填充槽 / `.reuse` /
+  `STL/LDL` spill / 真实 QMMA 数都只在 SASS）。
+- SASS = ptxas 实现层：寄存器/spill（res-usage）、调度填充、`.reuse`、内存宽度/cache
+  修饰、bank-conflict 风险、真实指令数 —— **唯一能对上 NCU 的层**。
+- 关键反例（验证过）：kernel 名含 `cutlass` 子串这个 ~+2% 的 trick，**源码只改标识符、
+  PTX 指令体 0 变化**（受控对照：纯改名后真指令体 diff = 0 行），差异完全发生在 ptxas
+  看到符号名后的调度决策 → **只能用 SASS+NCU 判其效果，PTX diff 永远看不见**。
+- 验证「我的改动有没有如实进 IR」用 `scripts/ptx_diff.sh`；验证「快了没 / 为什么」用
+  `scripts/sass_hist_diff.sh` + NCU duration。性能结论一律落在 SASS+NCU（见硬性要求 -0.5）。
