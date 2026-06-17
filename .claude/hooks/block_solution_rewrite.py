@@ -1,35 +1,33 @@
 #!/usr/bin/env python3
-"""IterKernel solution/ guards (PreToolUse + PostToolUse hook).
+"""IterKernel solution/ 守卫（PreToolUse + PostToolUse hook）。
 
-Two compaction-proof guarantees, keyed off on-disk state so they survive any
-context summarization (the model's memory is irrelevant — these run as a
-separate process on every tool call):
+两条抗压缩保障，以磁盘上的状态为依据，因此能在任何 context 摘要后存活
+（模型的记忆无关紧要——它们在每次工具调用时作为独立进程运行）：
 
-1. ANTI-REWRITE (means layer).  Once a campaign's
-   ``<root>/.rlcr/current/.initial-impl-done`` marker exists, ``solution/``
-   files may only change via incremental ``Edit``. Wholesale ``Write`` and
-   shell overwrites (``>`` ``>>`` ``tee`` ``sed -i`` ``truncate`` ``dd`` into
-   solution/) are denied.
+1. 防重写（means 层）。一旦某个 campaign 的
+   ``<root>/.rlcr/current/.initial-impl-done`` 标记存在，``solution/``
+   文件就只能通过增量 ``Edit`` 修改。整体 ``Write`` 以及 shell 覆盖
+   （往 solution/ 里 ``>`` ``>>`` ``tee`` ``sed -i`` ``truncate`` ``dd``）
+   一律拒绝。
 
-2. DIRECTION-READ GATE (process layer).  In the iteration phase (marker
-   present), an ``Edit`` to a locked ``solution/`` is denied unless the *current*
-   round direction file (newest ``round-*-direction.md`` under
-   ``.rlcr/current/modules/``, else ``.rlcr/current/direction.md``) has been
-   read since it was last written. Reading it (PostToolUse) refreshes
-   ``.rlcr/current/.direction-read-marker``.
+2. 方向已读门槛（process 层）。在迭代阶段（标记存在时），对已锁定的
+   ``solution/`` 做 ``Edit`` 会被拒绝，除非*当前*轮的方向文件
+   （``.rlcr/current/modules/`` 下最新的 ``round-*-direction.md``，否则
+   ``.rlcr/current/direction.md``）自其上次写入后已被读过。读它（PostToolUse）
+   会刷新 ``.rlcr/current/.direction-read-marker``。
 
-3. SASS GATE (process layer).  An ``Edit`` to a locked ``solution/`` in round N
-   (N>=2) is denied until the PREVIOUS round produced its SASS/static analysis
-   (``.rlcr/current/rounds/r<N-1>/candidate-sass.txt`` on disk). Enforces "每轮
-   都要做 SASS, 否则不进入下一轮代码修改". Round 1 is never gated.
+3. SASS 门槛（process 层）。在第 N 轮（N>=2）对已锁定的 ``solution/`` 做
+   ``Edit`` 会被拒绝，直到上一轮生成了它的 SASS/静态分析
+   （磁盘上的 ``.rlcr/current/rounds/r<N-1>/candidate-sass.txt``）。强制执行
+   「每轮都要做 SASS, 否则不进入下一轮代码修改」。第 1 轮永不设门槛。
 
-Invocation:
+调用方式：
   pre  → handle_pre_tool_use   (matcher: Write|Edit|MultiEdit|Bash)
   post → handle_post_tool_use  (matcher: Read)
 
-Decision protocol: deny == print PreToolUse ``permissionDecision: deny`` JSON
-on stdout, exit 0. Allow == exit 0, no output. Fail-open on any error so the
-guard never breaks a session.
+决策协议：deny == 在 stdout 打印 PreToolUse ``permissionDecision: deny`` JSON，
+exit 0。Allow == exit 0，无输出。任何错误都 fail-open，使守卫永远不会
+打断一次 session。
 """
 
 from __future__ import annotations
@@ -55,8 +53,8 @@ DIRECTION_REASON = (
     "{path}。读完它再做增量 Edit（即使 context 被压缩也不能跳过这一步）。"
 )
 
-# Representative of the 5 mandatory per-round static products. Its presence in a
-# round dir means that round's SASS/static analysis was generated.
+# 代表每轮必须生成的 5 类静态产物。它出现在某个 round 目录里，
+# 即表示该轮的 SASS/静态分析已经生成。
 SASS_ARTIFACT = "candidate-sass.txt"
 SASS_REASON = (
     "🔬 上一轮（{path}）的 SASS/静态分析尚未生成。硬门槛：每一轮都必须先完成 5 类"
@@ -78,7 +76,7 @@ def emit_deny(reason: str) -> int:
 
 
 def emit_warn(msg: str) -> None:
-    """Non-blocking: inject a warning into the model context (allows the tool)."""
+    """非阻塞：把一条警告注入到模型 context（放行该工具）。"""
     print(json.dumps({
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
@@ -103,11 +101,11 @@ def resolve_path(raw: str, cwd: str | None) -> Path:
 
 
 def locked_campaign_root(raw: str, cwd: str | None) -> Path | None:
-    """Return the campaign root iff ``raw`` is under a *locked* solution/ dir.
+    """仅当 ``raw`` 位于一个*已锁定*的 solution/ 目录下时，返回该 campaign 根目录。
 
-    Locked == path has a segment exactly ``solution`` and
-    ``<parent>/.rlcr/current/.initial-impl-done`` exists. Exact-segment match
-    avoids false positives like ``profiles/solution-sass.txt``.
+    已锁定 == 路径中有一个恰好为 ``solution`` 的段，且
+    ``<parent>/.rlcr/current/.initial-impl-done`` 存在。精确段匹配可避免
+    像 ``profiles/solution-sass.txt`` 这样的误判。
     """
     if not raw or "solution" not in raw:
         return None
@@ -121,8 +119,8 @@ def locked_campaign_root(raw: str, cwd: str | None) -> Path | None:
 
 
 def campaign_root_for_solution(raw: str, cwd: str | None) -> Path | None:
-    """Return the campaign root for any path under a ``solution`` segment,
-    regardless of lock state (used for the unlocked-state warning)."""
+    """对任何位于 ``solution`` 段下的路径返回其 campaign 根目录，
+    无论锁状态如何（用于未锁定状态的警告）。"""
     if not raw or "solution" not in raw:
         return None
     parts = resolve_path(raw, cwd).parts
@@ -133,10 +131,9 @@ def campaign_root_for_solution(raw: str, cwd: str | None) -> Path | None:
 
 
 def unlocked_but_iterating(root: Path) -> bool:
-    """True if the lock marker is MISSING yet the campaign is already past the
-    initial impl (>=1 rounds/r<N>/ dir exists). That is the 'lock got dropped and
-    never restored' state -> enforcement is silently off. Not triggered during the
-    pre-initial-impl phase (no rounds dirs yet) to avoid false positives."""
+    """当锁标记缺失、但 campaign 已越过初始实现阶段（存在 >=1 个 rounds/r<N>/
+    目录）时返回 True。这就是「锁被摘掉后从未恢复」的状态 -> 强制约束被悄悄
+    关闭。在初始实现之前的阶段（还没有 rounds 目录）不会触发，以避免误判。"""
     if root.joinpath(*MARKER_REL).exists():
         return False
     rounds = root / ".rlcr" / "current" / "rounds"
@@ -147,11 +144,11 @@ def unlocked_but_iterating(root: Path) -> bool:
 
 
 def current_direction_file(root: Path) -> Path | None:
-    """Newest round direction file.
+    """最新一轮的方向文件。
 
-    New layout: .rlcr/current/rounds/r<N>/direction.md  (one dir per round)
-    Legacy:     .rlcr/current/modules/<id>/round-*-direction.md
-    Fallback:   .rlcr/current/direction.md  (initial)
+    新布局：.rlcr/current/rounds/r<N>/direction.md  （每轮一个目录）
+    旧布局：.rlcr/current/modules/<id>/round-*-direction.md
+    兜底：  .rlcr/current/direction.md  （初始）
     """
     cur = root / ".rlcr" / "current"
     candidates: list[Path] = []
@@ -170,7 +167,7 @@ def current_direction_file(root: Path) -> Path | None:
     return fallback if fallback.exists() else None
 
 
-# --- shell overwrite detection -------------------------------------------------
+# --- shell 覆盖检测 -------------------------------------------------------------
 _REDIRECT_RE = re.compile(r"""\d*>>?\s*("[^"]*"|'[^']*'|[^\s;|&)]+)""")
 _SED_INPLACE_RE = re.compile(r"\bsed\b[^|;&]*-i")
 _TEE_RE = re.compile(r"\btee\b")
@@ -194,12 +191,12 @@ def bash_overwrite_root(command: str, cwd: str | None) -> Path | None:
     return None
 
 
-# --- direction-read gate -------------------------------------------------------
+# --- 方向已读门槛 --------------------------------------------------------------
 def direction_unread(root: Path) -> Path | None:
-    """Return the current direction file if it exists but has not been read."""
+    """如果当前方向文件存在但尚未被读过，则返回它。"""
     cur = current_direction_file(root)
     if cur is None:
-        return None  # nothing to read -> never deadlock
+        return None  # 没有可读的 -> 永不死锁
     read_marker = root.joinpath(*DIRECTION_READ_MARKER_REL)
     try:
         if not read_marker.exists() or cur.stat().st_mtime > read_marker.stat().st_mtime:
@@ -209,24 +206,64 @@ def direction_unread(root: Path) -> Path | None:
     return None
 
 
+# state.md 里声明「当前轮」的行，作为轮号的**权威来源**（由 Step 7a 每轮设定）。
+# 形如：`当前轮: r3` / `current_round = 3` / `当前轮号：r3`（大小写、r 前缀、
+# 中英冒号、=/: 都容忍）。
+_ROUND_DECL_RE = re.compile(
+    r"(?:current[_ ]round|当前轮号?)\s*[:：=]\s*r?(\d+)", re.IGNORECASE
+)
+
+
+def declared_current_round(cur: Path) -> int | None:
+    """从 .rlcr/current/state.md 读出 agent 声明的当前轮号 N（权威来源）。
+
+    取第一处匹配（state.md 顶部那条声明），读不到/没声明返回 None。"""
+    try:
+        text = (cur / "state.md").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    m = _ROUND_DECL_RE.search(text)
+    return int(m.group(1)) if m else None
+
+
 def prev_round_sass_missing(root: Path) -> Path | None:
-    """SASS GATE: editing solution/ in the current round is blocked until the
-    PREVIOUS round produced its SASS/static analysis. Enforces "每轮都要做 SASS,
-    否则不进入下一轮代码修改". Keyed on rounds/r<N>/candidate-sass.txt on disk
-    (compaction-proof). Round 1 (no previous) is never gated."""
-    rounds = root / ".rlcr" / "current" / "rounds"
-    dirs: list[tuple[int, Path]] = []
+    """SASS 门槛：在当前轮编辑 solution/ 会被阻止，直到**上一轮**生成了它的
+    SASS/静态分析。强制执行「每轮都要做 SASS, 否则不进入下一轮代码修改」。
+    第 1 轮（没有上一轮）永不设门槛。
+
+    「上一轮是谁」的判定（修掉旧的 `dirs[-2]` 错位 bug）：
+    旧实现把「目录号第二大的」当上一轮，依赖 agent 建 round 目录的时机——簿记
+    一错位就检查错轮次（甚至放过该拦的 SASS 跳过）。现在改为：
+      1) 权威路径：读 state.md 声明的当前轮号 N（Step 7a 每轮设定），上一轮 =
+         **磁盘上存在的、轮号 < N 的最大轮**。不受目录创建早晚影响。
+      2) 兜底：state.md 没有可解析的轮号时，回退到旧的「第二大目录」启发式
+         （保证不比以前差，且永不死锁）。"""
+    cur = root / ".rlcr" / "current"
+    rounds = cur / "rounds"
+    dirs: dict[int, Path] = {}
     try:
         for d in rounds.iterdir():
             m = re.fullmatch(r"r(\d+)", d.name)
             if m and d.is_dir():
-                dirs.append((int(m.group(1)), d))
+                dirs[int(m.group(1))] = d
     except OSError:
         return None
-    if len(dirs) < 2:
-        return None  # round 1 or none -> nothing to gate on
-    dirs.sort()
-    prev_dir = dirs[-2][1]  # round before the newest
+    if not dirs:
+        return None  # 还没有任何轮 -> 无可设门槛的对象
+
+    n = declared_current_round(cur)
+    if n is not None:
+        prev_nums = [k for k in dirs if k < n]
+        if not prev_nums:
+            return None  # 第 1 轮 / 没有更早的轮 -> 不设门槛
+        prev_dir = dirs[max(prev_nums)]
+    else:
+        # 兜底：旧启发式（第二大目录）。
+        nums = sorted(dirs)
+        if len(nums) < 2:
+            return None
+        prev_dir = dirs[nums[-2]]
+
     artifact = prev_dir / SASS_ARTIFACT
     return None if artifact.exists() else artifact
 
@@ -240,14 +277,14 @@ def handle_pre_tool_use(payload: dict) -> int:
         fp = tool_input.get("file_path", "")
         root = locked_campaign_root(fp, cwd)
         if root is not None:
-            # Allow creating a NEW file (re-architecture writes a new round-numbered
-            # source) — there is nothing to "rewrite". Only block OVERWRITING an
-            # existing solution file (the lazy full-file-rewrite the lock guards
-            # against). This removes the need to ever `rm` the lock for a re-arch.
+            # 允许创建一个新文件（re-architecture 会写一个以轮次编号命名的新
+            # 源文件）——这里没有什么可「重写」的。只阻止覆盖一个已存在的
+            # solution 文件（即锁所要防范的偷懒整文件重写）。这样就无需为
+            # re-arch 去 `rm` 这个锁。
             if resolve_path(fp, cwd).exists():
                 return emit_deny(REWRITE_REASON.format(root=root))
             return 0
-        # unlocked-state safety net
+        # 未锁定状态的安全网
         wroot = campaign_root_for_solution(fp, cwd)
         if wroot is not None and unlocked_but_iterating(wroot):
             emit_warn(UNLOCKED_WARN.format(root=wroot))
@@ -277,7 +314,7 @@ def handle_pre_tool_use(payload: dict) -> int:
 
 
 def handle_post_tool_use(payload: dict) -> int:
-    """Refresh the direction-read marker when the CURRENT direction is read."""
+    """当当前方向文件被读取时，刷新方向已读标记。"""
     tool = (payload.get("tool_name") or "").lower()
     if "read" not in tool:
         return 0
@@ -308,7 +345,7 @@ def main() -> int:
     try:
         payload = json.loads(raw) if raw else {}
     except json.JSONDecodeError:
-        return 0  # fail-open
+        return 0  # fail-open（出错时放行）
     if mode == "post":
         return handle_post_tool_use(payload)
     return handle_pre_tool_use(payload)

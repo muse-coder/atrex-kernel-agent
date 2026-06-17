@@ -1,27 +1,28 @@
 # <task_slug>
 
-Target GPU: <target_gpu>.
+目标 GPU：<target_gpu>。
 
-Baseline kernel entry point(s):
+Baseline kernel 入口点：
 
 - `<module_or_file:entry_function>`
 
-Goal: optimize <kernel_description> for the production shape set on <arch>.
+目标：在 <arch> 上针对生产 shape 集优化 <kernel_description>。
 
-Before writing an optimized kernel, read and follow:
+在编写优化 kernel 之前，请阅读并遵循：
 
 - `../../docs/benchmark_contract.md`
 - `../../docs/kernel_optimization_rules.md`
 - `../../docs/correctness_contract.md`
 
-Required first milestone:
+必须完成的第一个里程碑：
 
-1. Place the reference kernel implementation into `baseline/`.
-2. Record the baseline's origin in `docs/baseline_source.md`.
-3. Expose the baseline through local low-overhead ABI entry points.
-4. Expose the candidate through the exact same ABI in `solution/`.
-5. Create `bench/workloads.json`, copy the standard template to
-   `bench/benchmark.py`, implement `bench/adapter.py`, and create
-   `bench/correctness.py`.
+1. 把参考 kernel 实现放入 `baseline/`。
+2. 在 `docs/baseline_source.md` 中记录 baseline 的来源。
+3. 通过本地低开销 ABI 入口点暴露 baseline。
+4. 在 `solution/` 中通过完全相同的 ABI 暴露 candidate。
+5. 创建 `bench/workloads.json`，把标准模板复制到
+   `bench/benchmark.py`，实现 `bench/adapter.py`。正确性已内置在 benchmark.py
+   （poison + oracle compare），用 `python bench/benchmark.py --correctness-only`
+   单独跑正确性 gate，无需另写 `correctness.py`。
 
-All benchmark code must call only files in this task directory.
+所有 benchmark 代码只能调用本任务目录内的文件。

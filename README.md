@@ -10,8 +10,8 @@ Nsight Compute 证据、迭代式 agent 优化（RLCR）。
 
 ```text
 docs/                          规则与模板
-  kernel_optimization_rules.md   优化护栏（正确性优先、对称 ABI、evidence-backed）
-  benchmark_contract.md          benchmark 契约（A/B 交错、CUDA-event、provenance）
+  kernel_optimization_rules.md   优化护栏（正确性优先、对称 ABI、证据支撑）
+  benchmark_contract.md          benchmark 契约（A/B 交错、CUDA-event、来源追溯）
   correctness_contract.md        正确性要求（poison、oracle、回归网格）
   benchmark_template.py          标准 benchmark harness（复制到 bench/ 使用）
 
@@ -95,7 +95,7 @@ config.toml     build/benchmark 默认值
 baseline/       参考实现（对照组）
 solution/       你的优化版本
 bench/          独立 benchmark + 正确性 harness
-docs/           run log、profile 笔记、结果、决策记录
+docs/           运行日志、profile 笔记、结果、决策记录
 .rlcr/          RLCR 循环状态与每轮记录
 ```
 
@@ -106,16 +106,17 @@ docs/           run log、profile 笔记、结果、决策记录
 
 `/optimize-kernel` 在 Step 7 进入逐模块的 RLCR 迭代，由同一个 agent 在对话内
 顺序完成。轮次用**全局递增编号 N**，**每轮一个目录** `.rlcr/current/rounds/r<N>/`
-存放该轮全部产物（**本地，不 commit**）：
+存放该轮全部产物（**本地，不 commit**）。一轮三段（对应命令文档 Step 7a/7b/7c）：
 
-1. **实现** — 读 `rounds/r<N>/direction.md`，对目标 MODULE 做**增量 Edit**
-   （严禁 Write 覆盖 `solution/` 文件），跑 correctness + benchmark，commit 代码
-2. **Profile** — NCU 实测 + PTX/SASS 静态分析，全部存入 `rounds/r<N>/`
-3. **分析** — 综合 NCU/SASS 证据写 `rounds/r<N>/analysis.md`，给出 verdict 与
-   下一轮 `rounds/r<N+1>/direction.md`
+1. **实现（7a）** — 读 `rounds/r<N>/direction.md`，对目标 MODULE 做**增量 Edit**
+   （严禁 Write 覆盖 `solution/` 文件），`benchmark.py --correctness-only` + benchmark 粗筛，commit 代码
+2. **Profile（7b）** — NCU 实测 + PTX/SASS 静态分析，全部存入 `rounds/r<N>/`
+3. **分析（7c）** — 综合 NCU/SASS 证据写 `rounds/r<N>/analysis.md`，给出 verdict、更新
+   `state.md`、写下一轮 `rounds/r<N+1>/direction.md`
 
 每轮只 commit `solution/` 代码；`.rlcr/`（含每轮目录）整个 gitignore，过程
-记录与 profile 数据只留本地。每轮 8 步硬约束（不可跳过）见 CLAUDE.md。
+记录与 profile 数据只留本地。**每轮硬约束的完整清单以 `.claude/commands/optimize-kernel.md`
+Step 7 为权威**（CLAUDE.md「RLCR 每轮硬约束」是其检查清单镜像）。
 
 停止条件（**无轮次上限**，只要有进展/有方向就继续）：
 - **roofline efficiency ≥ 90%** → 优化成功，全部结束

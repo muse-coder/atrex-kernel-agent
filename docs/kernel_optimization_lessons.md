@@ -175,7 +175,7 @@ rm -rf /root/.cache/torch_extensions/py312_cu128/fp8_gemm_ext
 ```
 不清除会导致用旧代码运行，误以为改动无效。
 
-### NCU Profiling
+### NCU 性能剖析
 ```bash
 # 先找 kernel 名（不加 -c 限制）
 ncu --print-summary per-kernel python runner.py
@@ -205,11 +205,11 @@ cuobjdump -res-usage kernel.cubin > kernel-res-usage.txt
 
 | 优先级 | 瓶颈 | NCU 指标 | 预期收益 |
 |--------|------|----------|---------|
-| 1 | 无 compute-memory overlap | Compute SM Throughput 27.5% (vs baseline 82.1%) | ~2x |
-| 2 | 共享内存 bank conflict | 5.3-way avg, 74.87% est. speedup | ~1.5x |
-| 3 | 全局 store 未合并 | 8/32 bytes utilized, 58.77% est. speedup | ~1.3x |
-| 4 | MIO throttle stalls | 51.9% of stall cycles | ~1.2x |
-| 5 | 低 occupancy | 33.3% theoretical (register limited) | ~1.1x |
+| 1 | 无 compute-memory overlap | Compute SM Throughput 27.5%（对比 baseline 82.1%） | ~2x |
+| 2 | 共享内存 bank conflict | 平均 5.3-way，预计提速 74.87% | ~1.5x |
+| 3 | 全局 store 未合并 | 利用 8/32 字节，预计提速 58.77% | ~1.3x |
+| 4 | MIO throttle stalls | 占停顿周期的 51.9% | ~1.2x |
+| 5 | 低 occupancy | 理论 33.3%（受寄存器限制） | ~1.1x |
 
 **关键洞察**：Pipeline overlap (cp.async double buffering) 的收益远大于
 bank conflict 消除。应该优先做 pipeline，然后再精调 bank conflict。

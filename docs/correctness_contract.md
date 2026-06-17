@@ -1,39 +1,35 @@
-# Correctness Contract
+# 正确性契约
 
-This document defines the correctness requirements that every kernel
-optimization task must satisfy before benchmark results are considered valid.
+本文档定义每个 kernel 优化任务在 benchmark 结果被视为有效之前，必须满足的正确
+性要求。
 
-## General Principles
+## 总体原则
 
-1. **Correctness before performance.** No benchmark result counts until the
-   candidate passes both the production workload correctness checks and the
-   canonical regression grid.
+1. **正确性优先于性能。** 在 candidate 同时通过生产 workload 正确性检查和标准
+   回归网格之前，任何 benchmark 结果都不算数。
 
-2. **Poison before check.** Output buffers must be filled with NaN (floating
-   point) or a sentinel value (integer) before every correctness call so that
-   stale-output and skipped-kernel bugs are visible.
+2. **检查前先投毒。** 在每次正确性调用之前，输出 buffer 必须填入 NaN（浮点）
+   或哨兵值（整数），以便陈旧输出和被跳过的 kernel bug 可见。
 
-3. **NaN/Inf preservation.** Preserve explicit NaN/Inf checks in the
-   correctness harness. If the baseline kernel never produces NaN/Inf on valid
-   input, the candidate must not produce them either.
+3. **保留 NaN/Inf。** 在正确性 harness 中保留显式的 NaN/Inf 检查。如果 baseline
+   kernel 在合法输入上从不产生 NaN/Inf，那么 candidate 也不得产生。
 
-4. **Oracle comparison.** Compare candidate output against an independent
-   PyTorch/math oracle when practical. If a full oracle is expensive, at
-   minimum compare against the baseline plus targeted oracle rows.
+4. **Oracle 对比。** 在可行时，把 candidate 输出与一个独立的 PyTorch/数学
+   oracle 对比。如果完整 oracle 代价过高，至少与 baseline 加上有针对性的
+   oracle 行做对比。
 
-## Defining a Regression Grid
+## 定义回归网格
 
-Each task should define a regression grid in its `prompt.md` or a separate
-`docs/correctness_contract.md` file. The grid specifies:
+每个任务都应在其 `prompt.md` 或一个单独的 `docs/correctness_contract.md` 文件
+中定义一个回归网格。该网格指定：
 
-- **Shapes**: representative tensor dimensions covering typical and edge cases.
-- **Dtypes**: all dtypes the kernel is expected to support (e.g. fp16, bf16,
-  fp32).
-- **Scalar parameters**: any configurable scalars (eps, num_groups, etc.).
-- **Layout variants**: contiguous, channels-last, strided, etc.
-- **Tolerances**: per-dtype absolute and relative tolerance.
+- **Shapes**：覆盖典型情形和边缘情形的代表性 tensor 维度。
+- **Dtypes**：kernel 预期支持的所有 dtype（例如 fp16、bf16、fp32）。
+- **标量参数**：任何可配置的标量（eps、num_groups 等）。
+- **Layout 变体**：contiguous、channels-last、strided 等。
+- **Tolerances**：按 dtype 划分的绝对与相对 tolerance。
 
-Example:
+示例：
 
 ```yaml
 regression_grid:
@@ -50,10 +46,10 @@ regression_grid:
     float32:  {atol: 1e-5, rtol: 1e-5}
 ```
 
-## When to Update Tolerances
+## 何时更新 Tolerance
 
-- Do not relax tolerances to make a failing candidate pass.
-- If the task records a stricter task-local tolerance in
-  `docs/benchmark_method.md`, use the stricter value.
-- If evidence shows the baseline itself exceeds a grid tolerance on specific
-  shapes, document it and adjust only that cell.
+- 不要为了让一个失败的 candidate 通过而放宽 tolerance。
+- 如果任务在 `docs/benchmark_method.md` 中记录了更严格的任务局部 tolerance，
+  使用更严格的那个值。
+- 如果有证据表明 baseline 自身在特定 shape 上超出了某个网格 tolerance，记录下
+  来，并只调整那一个单元格。

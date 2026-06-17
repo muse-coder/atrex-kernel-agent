@@ -3,32 +3,31 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage:
-  scripts/launch_task.sh <kernel-task-dir> [extra claude args...]
+用法:
+  scripts/launch_task.sh <kernel-task-dir> [额外的 claude 参数...]
 
-Creates a task-owned git worktree, enters the kernel task directory inside that
-worktree, and launches Claude Code with CLAUDE_PROJECT_DIR set to the kernel
-directory.
+创建一个任务专属的 git worktree，进入该 worktree 内的 kernel 任务目录，
+并启动 Claude Code，同时把 CLAUDE_PROJECT_DIR 设为 kernel 目录。
 
-Environment overrides:
-  IK_BASE_BRANCH        Base branch/ref for the worktree
-                        (default: current checkout branch, or HEAD if detached)
-  IK_WORKTREE_BASE      Parent directory for generated worktrees
-                        (default: ../IterKernel-worktrees next to this repo)
-  IK_RUN_ID             Run suffix (default: timestamp-pid)
-  IK_BRANCH             Exact branch name to create
-  IK_BRANCH_PREFIX      Branch prefix when IK_BRANCH is unset (default: ik)
-  IK_REVIEW_BASE        Exact local branch name for RLCR review base
-  IK_REVIEW_BASE_PREFIX Review-base branch prefix (default: ik-base)
-  IK_WORKTREE_ROOT      Exact worktree path to create
-  CLAUDE_BIN            Claude executable (default: claude)
-  CLAUDE_MODEL          Claude model flag value (default: opus)
-  CLAUDE_EFFORT         Claude effort flag value (default: max)
-  IK_BASH_BIN           Bash used for launch + spawned Claude hooks.
-  IK_LAUNCHER_NAME      Friendly launcher name
-  IK_TASK_LABEL         Override the friendly label for branch/worktree names
-  IK_BOOTSTRAP_DRAFT=0  Skip automatic .rlcr/draft.md creation
-  IK_NO_CLAUDE=1        Create the worktree without launching Claude
+环境变量覆盖项:
+  IK_BASE_BRANCH        worktree 的基准分支/ref
+                        (默认: 当前 checkout 的分支，或 detached 时为 HEAD)
+  IK_WORKTREE_BASE      生成的 worktree 的父目录
+                        (默认: 本 repo 旁边的 ../IterKernel-worktrees)
+  IK_RUN_ID             运行后缀 (默认: timestamp-pid)
+  IK_BRANCH             要创建的精确分支名
+  IK_BRANCH_PREFIX      IK_BRANCH 未设置时的分支前缀 (默认: ik)
+  IK_REVIEW_BASE        RLCR review base 的精确本地分支名
+  IK_REVIEW_BASE_PREFIX review-base 的分支前缀 (默认: ik-base)
+  IK_WORKTREE_ROOT      要创建的精确 worktree 路径
+  CLAUDE_BIN            Claude 可执行文件 (默认: claude)
+  CLAUDE_MODEL          Claude model flag 的值 (默认: opus)
+  CLAUDE_EFFORT         Claude effort flag 的值 (默认: max)
+  IK_BASH_BIN           用于启动 + 派生的 Claude hook 的 Bash。
+  IK_LAUNCHER_NAME      友好的 launcher 名称
+  IK_TASK_LABEL         覆盖用于分支/worktree 名称的友好标签
+  IK_BOOTSTRAP_DRAFT=0  跳过自动创建 .rlcr/draft.md
+  IK_NO_CLAUDE=1        只创建 worktree，不启动 Claude
 EOF
 }
 
@@ -73,19 +72,19 @@ CLAUDE_BIN="${CLAUDE_BIN:-claude}"
 CLAUDE_MODEL="${CLAUDE_MODEL:-opus}"
 CLAUDE_EFFORT="${CLAUDE_EFFORT:-max}"
 
-# Detect target GPU from task slug prefix.
+# 从任务 slug 前缀检测目标 GPU。
 case "$TASK_SLUG" in
   b200_*)
     TARGET_GPU_LABEL="B200"
-    REMOTE_HOST_HINT="(set your B200 host)"
+    REMOTE_HOST_HINT="(请设置你的 B200 主机)"
     ;;
   h200_*)
     TARGET_GPU_LABEL="H200"
-    REMOTE_HOST_HINT="(set your H200 host)"
+    REMOTE_HOST_HINT="(请设置你的 H200 主机)"
     ;;
   *)
     TARGET_GPU_LABEL="target"
-    REMOTE_HOST_HINT="the task prompt's target host"
+    REMOTE_HOST_HINT="任务 prompt 中指定的目标主机"
     ;;
 esac
 
@@ -111,8 +110,8 @@ find_safe_bash() {
 
 IK_SELECTED_BASH="$(find_safe_bash || true)"
 if [[ -z "$IK_SELECTED_BASH" ]]; then
-  echo "error: IterKernel requires bash 4+; /bin/bash 3.2 is not supported" >&2
-  echo "hint: install modern bash and/or set IK_BASH_BIN=/path/to/bash" >&2
+  echo "错误: IterKernel 需要 bash 4+；不支持 /bin/bash 3.2" >&2
+  echo "提示: 安装新版 bash，和/或设置 IK_BASH_BIN=/path/to/bash" >&2
   exit 127
 fi
 IK_SELECTED_BASH_DIR="$(cd "$(dirname "$IK_SELECTED_BASH")" && pwd)"
@@ -120,7 +119,7 @@ IK_LAUNCH_PATH="$IK_SELECTED_BASH_DIR:$PATH"
 
 if ! bash_is_safe "$BASH"; then
   if [[ "${IK_BASH_REEXECED:-}" == "1" ]]; then
-    echo "error: failed to re-exec with safe bash: $IK_SELECTED_BASH" >&2
+    echo "错误: 用安全 bash 重新 exec 失败: $IK_SELECTED_BASH" >&2
     exit 127
   fi
   export IK_BASH_REEXECED=1
@@ -130,46 +129,46 @@ if ! bash_is_safe "$BASH"; then
 fi
 
 if [[ "$TASK_DIR" = /* || "$TASK_DIR" == *".."* ]]; then
-  echo "error: task dir must be repo-relative and must not contain '..': $TASK_DIR" >&2
+  echo "错误: 任务目录必须是 repo 相对路径，且不能包含 '..': $TASK_DIR" >&2
   exit 2
 fi
 
 if [[ ! -d "$REPO_ROOT/$TASK_DIR" ]]; then
-  echo "error: task dir does not exist in repo: $REPO_ROOT/$TASK_DIR" >&2
+  echo "错误: repo 中不存在该任务目录: $REPO_ROOT/$TASK_DIR" >&2
   exit 2
 fi
 
 if [[ "${IK_NO_CLAUDE:-}" != "1" ]] && ! command -v "$CLAUDE_BIN" >/dev/null 2>&1; then
-  echo "error: Claude executable not found: $CLAUDE_BIN" >&2
+  echo "错误: 找不到 Claude 可执行文件: $CLAUDE_BIN" >&2
   exit 127
 fi
 
 if ! git -C "$REPO_ROOT" rev-parse --verify --quiet "$BASE_BRANCH" >/dev/null; then
-  echo "error: base branch/ref not found: $BASE_BRANCH" >&2
+  echo "错误: 找不到基准分支/ref: $BASE_BRANCH" >&2
   exit 2
 fi
 
 if ! git -C "$REPO_ROOT" cat-file -e "$BASE_BRANCH:$TASK_DIR" 2>/dev/null; then
-  echo "error: base branch/ref does not contain task dir: $BASE_BRANCH:$TASK_DIR" >&2
-  echo "hint: commit the kernel task folder or set IK_BASE_BRANCH" >&2
+  echo "错误: 基准分支/ref 中不包含该任务目录: $BASE_BRANCH:$TASK_DIR" >&2
+  echo "提示: 提交该 kernel 任务文件夹，或设置 IK_BASE_BRANCH" >&2
   exit 2
 fi
 
 if [[ -e "$WORKTREE_ROOT" ]]; then
-  echo "error: worktree path already exists: $WORKTREE_ROOT" >&2
-  echo "hint: set IK_RUN_ID or IK_WORKTREE_ROOT for a fresh path" >&2
+  echo "错误: worktree 路径已存在: $WORKTREE_ROOT" >&2
+  echo "提示: 设置 IK_RUN_ID 或 IK_WORKTREE_ROOT 以使用全新路径" >&2
   exit 2
 fi
 
 if git -C "$REPO_ROOT" show-ref --verify --quiet "refs/heads/$REVIEW_BASE"; then
-  echo "error: review base branch already exists: $REVIEW_BASE" >&2
-  echo "hint: set IK_RUN_ID or IK_REVIEW_BASE for a fresh branch" >&2
+  echo "错误: review base 分支已存在: $REVIEW_BASE" >&2
+  echo "提示: 设置 IK_RUN_ID 或 IK_REVIEW_BASE 以使用全新分支" >&2
   exit 2
 fi
 
 mkdir -p "$WORKTREE_BASE"
 
-echo "== IterKernel task launcher =="
+echo "== IterKernel 任务启动器 =="
 echo "repo:      $REPO_ROOT"
 echo "launcher:  $LAUNCHER_NAME"
 echo "label:     $TASK_LABEL"
@@ -192,16 +191,16 @@ if [[ "${IK_BOOTSTRAP_DRAFT:-1}" != "0" ]]; then
   if [[ ! -f "$DRAFT_FILE" ]]; then
     {
       cat <<EOF
-# Task Context — ${TASK_SLUG}
+# 任务上下文 — ${TASK_SLUG}
 
-This file collects the task context for this kernel campaign. Open Claude Code
-in this worktree and start the optimization in one command:
+本文件汇总了这个 kernel campaign 的任务上下文。在该 worktree 中打开
+Claude Code，用一条命令启动优化:
 
-  /optimize-kernel <describe the kernel from the Source Prompt below>
+  /optimize-kernel <根据下面的 Source Prompt 描述这个 kernel>
 
-The command runs the whole flow inline (no Workflow, no subagents) and creates
-the campaign's standalone git repo under /tmp/<slug>/. See
-.claude/commands/optimize-kernel.md for the full step list.
+该命令会内联运行整个流程（无 Workflow、无 subagent），并在 /tmp/<slug>/
+下创建本 campaign 独立的 git repo。完整步骤列表见
+.claude/commands/optimize-kernel.md。
 
 ## Source Prompt
 
@@ -211,40 +210,39 @@ EOF
       cat <<EOF
 \`\`\`
 
-## Mandatory Constraints
+## 强制约束
 
-- Use this current kernel folder as the optimization workspace.
-- Keep \`.rlcr/\` untracked.
-- Read \`../../docs/benchmark_contract.md\` — its local-baseline and A/B
-  benchmark rules are mandatory.
-- Read \`../../docs/kernel_optimization_rules.md\` and
-  \`../../docs/correctness_contract.md\`.
-- Read \`${WORKTREE_ROOT}/external/KernelWiki/SKILL.md\` and
-  \`${WORKTREE_ROOT}/external/ncu-report-skill/SKILL.md\` before implementation
-  (when available).
-- In every RLCR iteration, refresh context from the source prompt, rules,
-  current benchmark/profile evidence, and knowledge skills before choosing the
-  next edit.
-- Recover K/R/W from the source prompt before implementation:
-  - K: kernel semantics and callsite contract
-  - R: correctness oracle and baseline path
-  - W: workload shape set and benchmark methodology
-- Check GPU state before and after every benchmark/profile run.
-- Do not fabricate benchmark, NCU, correctness, or GPU-id evidence.
-- Keep all artifacts inside this kernel folder.
-- Keep raw profiler/NCU/build artifacts local; do not stage them for the PR.
+- 使用当前这个 kernel 文件夹作为优化工作区。
+- 保持 \`.rlcr/\` 不被 git 跟踪。
+- 阅读 \`../../docs/benchmark_contract.md\` —— 其 local-baseline 与 A/B
+  benchmark 规则是强制性的。
+- 阅读 \`../../docs/kernel_optimization_rules.md\` 和
+  \`../../docs/correctness_contract.md\`。
+- 实现前阅读 \`${WORKTREE_ROOT}/external/KernelWiki/SKILL.md\` 和
+  \`${WORKTREE_ROOT}/external/ncu-report-skill/SKILL.md\`
+  （如果存在）。
+- 在每一轮 RLCR 迭代中，选择下一处修改前，都要从 source prompt、规则、
+  当前的 benchmark/profile 证据以及知识 skill 重新刷新 context。
+- 实现前从 source prompt 中恢复 K/R/W:
+  - K: kernel 语义与调用点契约
+  - R: 正确性 oracle 与 baseline 路径
+  - W: workload shape 集与 benchmark 方法论
+- 每次 benchmark/profile 运行前后都检查 GPU 状态。
+- 不要伪造 benchmark、NCU、正确性或 GPU-id 证据。
+- 把所有产物都保留在这个 kernel 文件夹内。
+- 把原始的 profiler/NCU/build 产物保留在本地；不要把它们 stage 进 PR。
 
-## Recommended Approach
+## 推荐做法
 
-- Recover the baseline source, exact callsite, and workload shape set.
-- Define matching baseline and candidate entry points using the same ABI.
-- Fill \`bench/correctness.py\` before optimization.
-- Establish \`bench/benchmark.py\`, frozen workloads, and immutable baseline numbers.
-- Rank candidate directions by expected benefit and risk.
-- Implement bounded optimization attempts under RLCR.
-- Include a remote phase with selected host/GPU, exact commands, and artifacts.
-- Use NCU/profile evidence for non-obvious bottlenecks.
-- Update \`docs/results.md\` before final completion.
+- 恢复 baseline 源码、精确的调用点、以及 workload shape 集。
+- 用相同的 ABI 定义匹配的 baseline 与 candidate 入口点。
+- 优化前先填好 \`bench/correctness.py\`。
+- 建立 \`bench/benchmark.py\`、冻结的 workloads、以及不可变的 baseline 数值。
+- 按预期收益与风险给 candidate 方向排序。
+- 在 RLCR 下实施有界的优化尝试。
+- 包含一个远程阶段，写明所选 host/GPU、精确命令与产物。
+- 对不明显的瓶颈使用 NCU/profile 证据。
+- 最终完成前更新 \`docs/results.md\`。
 EOF
     } > "$DRAFT_FILE"
   fi
@@ -254,13 +252,13 @@ echo
 echo "== Claude project root =="
 echo "$PWD"
 echo
-echo "Context: .rlcr/draft.md"
-echo "Inside Claude Code, start the optimization in one command:"
-echo "  /optimize-kernel <describe the kernel from prompt.md>"
+echo "上下文: .rlcr/draft.md"
+echo "在 Claude Code 中，用一条命令启动优化:"
+echo "  /optimize-kernel <根据 prompt.md 描述这个 kernel>"
 echo
 
 if [[ "${IK_NO_CLAUDE:-}" == "1" ]]; then
-  echo "IK_NO_CLAUDE=1 set; worktree prepared without launching Claude."
+  echo "已设置 IK_NO_CLAUDE=1；已准备好 worktree，未启动 Claude。"
   exit 0
 fi
 

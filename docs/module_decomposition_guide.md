@@ -1,4 +1,4 @@
-# Module Decomposition Guide
+# 模块分解指南
 
 模块分解参考：如何将 GPU kernel 拆分为可独立优化的模块。
 `/optimize-kernel` 在 Step 6c 做模块分解时参考本文档。
@@ -12,7 +12,7 @@
 
 ## 典型分解
 
-### GEMM (pipeline software-pipelining style)
+### GEMM（软件流水线 software-pipelining 风格）
 
 | Module ID | 描述 | 典型运行时间占比 |
 |---|---|---|
@@ -23,18 +23,18 @@
 | `epilogue-compute` | 累加器类型转换、bias add、activation | 5-15% |
 | `epilogue-store` | TMA/全局内存写回 | 5-10% |
 
-### Attention (FlashAttention style)
+### Attention（FlashAttention 风格）
 
 | Module ID | 描述 |
 |---|---|
 | `qk-load` | Q、K tile 加载到 smem/register |
 | `score-compute` | QK^T matmul |
-| `softmax` | Online softmax: row-max, exp, row-sum |
+| `softmax` | 在线 softmax：row-max、exp、row-sum |
 | `pv-compute` | score @ V matmul |
 | `output-accumulate` | 跨 K-tile 累加器 rescale + 累加 |
 | `output-store` | 最终输出写回全局内存 |
 
-### Reduction (multi-level)
+### Reduction（多级归约 multi-level）
 
 | Module ID | 描述 |
 |---|---|
@@ -43,7 +43,7 @@
 | `block-reduce` | smem + `__syncthreads()` 跨 warp 归约 |
 | `grid-reduce` | atomicAdd 或多阶段 global 归约 |
 
-### Fused Ops
+### 融合算子（Fused Ops）
 
 每个被 fuse 的算子一个模块，加上 `data-load` 和 `data-store` 各一个。
 

@@ -339,6 +339,10 @@ def _run_one_workload(workload: dict[str, Any], args: argparse.Namespace) -> dic
                 "correctness": correctness,
             }
 
+        if getattr(args, "correctness_only", False):
+            # Correctness gate only: validate across trials, skip warmup/timing.
+            continue
+
         for _ in range(args.warmup_runs):
             baseline_fn()
             candidate_fn()
@@ -375,6 +379,15 @@ def _run_one_workload(workload: dict[str, Any], args: argparse.Namespace) -> dic
         candidate_samples.append(cand_us)
         baseline_wall_samples.append(base_wall_us)
         candidate_wall_samples.append(cand_wall_us)
+
+    if getattr(args, "correctness_only", False):
+        return {
+            "id": workload_id,
+            "status": "CORRECT",
+            "production": bool(workload.get("production", True)),
+            "workload": workload,
+            "correctness": {"ok": True},
+        }
 
     baseline = _stats(baseline_samples, baseline_inner)
     candidate = _stats(candidate_samples, candidate_inner)
@@ -528,6 +541,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--atol", type=float, default=1e-2)
     parser.add_argument("--rtol", type=float, default=1e-2)
     parser.add_argument("--no-isolated", dest="isolated", action="store_false")
+    parser.add_argument(
+        "--correctness-only",
+        action="store_true",
+        help="only run the correctness gate (poison + oracle compare), skip all timing",
+    )
     parser.set_defaults(isolated=True)
     return parser.parse_args()
 
@@ -559,13 +577,16 @@ def main() -> int:
                     f"candidate={result['candidate']['median_us']:.3f}us",
                     flush=True,
                 )
+            elif result.get("status") == "CORRECT":
+                print("CORRECT (correctness-only)", flush=True)
             else:
                 print(f"{result.get('status')} {result.get('error') or result.get('correctness')}", flush=True)
 
+        ok_count = sum(r.get("status") in ("PASSED", "CORRECT") for r in results)
         summary = {
             "event": "summary",
             "headline": _headline(results),
-            "passed": sum(r.get("status") == "PASSED" for r in results),
+            "passed": ok_count,
             "total": len(results),
             "nvidia_smi_after": _nvidia_smi(),
         }

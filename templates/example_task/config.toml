@@ -1,11 +1,16 @@
-# Task configuration template.
-# Copy this directory, rename it, and fill in the values below.
+# 任务配置模板。
+# 复制本目录，重命名，并填写下面的各项值。
 
 [task]
 slug = "example_task"
-arch = "b200"                # target GPU architecture
-target_gpu = "NVIDIA B200"
-family = "example"           # kernel family name
+# arch / target_gpu 不要预设——必须先用 `nvidia-smi` 查清楚实际 GPU 再填：
+#   nvidia-smi --query-gpu=name,compute_cap --format=csv,noheader
+# compute_cap 形如 12.0 → arch = "sm_120a"（去掉点、补架构专用后缀 'a'，
+# 因为 TMA / ldmatrix / fp8 mma 等指令需要 sm_XXXa 变体）。
+# arch 一律写**完整 nvcc 形式**（sm_90a / sm_100a / sm_120a），命令里直接 -arch=<arch>。
+arch = ""                    # 例：sm_120a（由 nvidia-smi 检测填入，勿硬编码）
+target_gpu = ""              # 例：NVIDIA RTX PRO 5000（nvidia-smi 实测填入）
+family = "example"           # kernel 系列名称
 
 [build]
 language = "cuda"            # cuda | triton | cutedsl
@@ -13,13 +18,13 @@ destination_passing_style = true
 baseline_entry_point = "baseline/kernel.cu::example_baseline"
 candidate_entry_point = "solution/kernel.cu::example_candidate"
 
+# 这些镜像 bench/benchmark.py 的同名 CLI 参数（benchmark.py 不直接读本文件，
+# 这里仅作该 campaign 的记录/默认值参考；真正生效靠传给 benchmark.py 的命令行）。
 [benchmark]
 warmup_runs = 10
-iterations = 200
 num_trials = 7
 inner_iterations_min = 1
 inner_iterations_max = 4096
 target_sample_us = 1000
 timeout_seconds = 600
 use_isolated_runner = true
-required_matched_ratio = 1.0
