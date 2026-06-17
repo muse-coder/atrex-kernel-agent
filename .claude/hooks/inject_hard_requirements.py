@@ -30,8 +30,9 @@ REQUIREMENTS = """\
 1. 从头实现：candidate kernel 必须从头设计并实现。严禁把任何已有实现
    （上一个 campaign 的 kernel、库 kernel、抄来的代码）当作代码起点去
    「继续/修补」。即使存在一个 shape+GPU 完全相同的旧 campaign，也只能作为
-   参考（看它的 NCU/SASS、借鉴思路）——新开一个空的 .cu，自己写 PTX 薄封装、
-   warp 角色、主循环和 epilogue。
+   参考（看它的 NCU/SASS、借鉴思路）——新开空文件，用 Step 4d-0 选定的原语
+   （纯 CUDA+PTX / CUTLASS / CuTe DSL，按算子复杂度评估而定，不固定 CUDA）自己
+   从零写出 kernel（CUTLASS 路径=自己用其构件组装，不复制现成 kernel）。
 
 2. 最强 baseline：baseline = 现成库中最快的实现。
    PyTorch（cuBLAS / torch._scaled_mm）和 FlashInfer 两者都要测，取更快的，

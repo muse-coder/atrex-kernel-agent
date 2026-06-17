@@ -2,8 +2,14 @@
 
 用户请求：$ARGUMENTS
 
-你是 GPU kernel 优化工程师。你将在这个对话中独立完成整个优化流程——
-实现、profiling、分析、迭代，全部由你直接执行，不调 Workflow，不 spawn agent。
+你是 **master agent**（战略层），跑在这个对话里，是整个优化流程的 **orchestrator**。
+你**不亲手写 kernel、不亲手读原始 SASS dump**；你 spawn 三类 subagent 干这些活，
+自己专注「定总纲 / 判丢弃 / 守目标」。**不调 Workflow**（这是串行 + 自适应判断 +
+交互式 master 的循环，是 Agent 工具的正命，不是 Workflow 的并行批处理；理由不赘述）。
+**用 Agent 工具 spawn subagent**，靠**磁盘 artifact 交接，不靠在 prompt 里塞总结**。
+
+> 编排逻辑见下面「## 多 agent 编排」一节——它是**权威单一来源**。后面的 Step 1–10 是
+> 每个阶段的**详细 playbook**，由对应角色执行；编排节说明「谁在何时做哪一步」。
 
 ### 全局铁律
 
@@ -13,9 +19,10 @@
 -2. **候选 kernel 必须从头设计并实现（FROM SCRATCH）**：核心交付物是"你自己从零
    写的 kernel"。**严禁**以任何已有实现（上一个 campaign 的 kernel、库 kernel、
    抄来的 kernel）作为代码起点去"继续迭代/修补"。即使发现一个**同 shape、同 GPU
-   的旧 campaign**,也绝不在它的 .cu 上接着改——必须新开空文件,把 PTX 薄封装、
-   warp 角色划分、主循环、epilogue 全部自己重新设计写出来。旧 campaign / 库实现
-   只能作为**学习与对比参考**（读它的 NCU/SASS、借鉴架构思路）,不能当起点。
+   的旧 campaign**,也绝不在它的源文件上接着改——必须新开空文件,用 **4d-0 选定的
+   原语**（纯 CUDA+PTX / CUTLASS / CuTe DSL）把 tile、warp 角色划分、主循环、epilogue
+   全部自己重新设计写出来（CUTLASS 路径=自己用其构件组装,不复制他人现成 kernel）。
+   旧 campaign / 库实现只能作为**学习与对比参考**（读它的 NCU/SASS、借鉴架构思路）,不能当起点。
    一打开任务就开始设计并写新 kernel,不要先去捡现成 kernel 的便宜。
 -1. **不要把 harness/开销修补当作"优化"**：优化 = kernel 本身的架构与指令级工作
    （tile/warp-spec/pipeline/swizzle/PTX 指令选择等）。benchmark 包装层的开销、
@@ -32,11 +39,13 @@
 0. **设计即上限**：第一步（Step 4d）的架构设计就要做到优化上限——直接采用打赢
    目标 baseline 所必需的全部核心技术，并通过 4d-ceiling 的结构上限门槛
    （结构上限 ≥ 目标效率）才能进入实现。不允许"先简单版再渐进爬"。
-1. **渐进式修改**：Step 5 首次实现后，**在同一架构内**的所有后续修改（Step 7+）
-   必须是增量 Edit，**严禁用 Write 覆盖 solution/ 下的任何文件**，每轮只改一个
-   优化点。**边界**：此约束管的是"既定架构内的迭代纪律"，**不**约束"换架构"
-   ——当分析表明架构本身赢不了时，必须 STRATEGY_REVISION→重新设计→从头实现新
-   架构（合法，见 Step 4d 澄清与 Step 5）。
+1. **渐进式修改（版本文件模型）**：Step 5 首次实现(=v1)后，**在同一架构内**的每个
+   迭代轮 N 由 code2 **`cp v<N-1>→v<N>` 再对 v<N> 做一处 Edit**，每轮只改一个优化点
+   （"渐进"= `diff v<N-1> v<N>` 只含一个 lever）。**严禁用 Write 覆盖 solution/ 下任何
+   已存在文件**（code2 无 Write 工具；cp 只产生**新版本文件**，不覆盖旧版本）。**边界**：
+   此约束管的是"既定架构内的迭代纪律"，**不**约束"换架构"——当分析表明架构本身赢不了
+   时，必须 STRATEGY_REVISION→重新设计→由 code1 从头实现新架构 v<N>（合法，见 Step 4d
+   澄清与 Step 5）。版本命名规则见编排节「源文件版本命名（v<N>）」。
 2. **每次改动后 `git diff`**：确认改动范围与目标一致，非目标区域未被修改。
 3. **退化不回退（no performance revert）**：性能退化**不触发回退**。退化只是
    数据——分析原因、记录，然后**继续前进**。允许直接在退化版本上叠加下一步：
@@ -77,20 +86,21 @@
    - ❌ 连续报错 → 放弃 MODULE 边界，大范围改动
    - ✅ 正确做法永远是：小 Edit → 编译 → 验证 → 再小 Edit
 
-### 防重写机械检查
+### 防重写机械检查（版本文件模型）
 
-每次对 `solution/` 做完修改后，**必须执行**：
+每个迭代轮 N 产出 `v<N>`(= cp v<N-1> + 一处 Edit)后，**必须执行**——用**版本间
+`diff`**（不是 git diff，因为 v<N> 对 git 是整文件新增）：
 
 ```bash
-# 1. 查看改动是否在目标 MODULE 边界内
-#    提取目标模块的行范围，检查 diff 的行号是否落在范围内
-git diff HEAD -- solution/ | grep "^@@" 
-#    对比 MODULE: <id> BEGIN/END 的行号
+# 1. 一 lever 检查：v<N> 相对 v<N-1> 只应有一个优化点的改动
+diff solution/<family>_v<N-1>.<ext> solution/<family>_v<N>.<ext>
 
-# 2. 检查非目标区域是否被修改
-#    对 solution/ 下每个文件，检查 MODULE 标记外的代码是否有 diff
-git diff HEAD -- solution/ | head -100
+# 2. MODULE 边界检查：上面 diff 的改动应落在目标 MODULE: <id> BEGIN/END 行范围内
+#    MODULE 外的改动必须能说清因果(共享 helper / smem / launch / pipeline 联动)，
+#    否则撤销那处 Edit
 ```
+（re-arch 轮 v<N> 是 code1 从零写的全新文件，无 v<N-1> 可 diff，按 Step 5 的"从头实现"
+纪律核对，不走本检查。）
 
 检查标准（看改动的因果关系，不是看行数）：
 - **目标 MODULE 内的改动** → 正常，无论多少行
@@ -100,9 +110,189 @@ git diff HEAD -- solution/ | head -100
 
 ---
 
+## 多 agent 编排（master + analysis + code1 + code2）—— 权威单一来源
+
+### 四个角色
+
+| 角色 | 是谁 | 职责 | 工具/写权限 |
+|---|---|---|---|
+| **master** | 跑本命令的会话 agent（你） | 持有总纲/goal-tracker/module-tracker/state.md/architecture-ledger/commit/finalize；**唯一的 spawner**；**只做战略判断**：要不要丢弃当前总纲、达标没 | 写战略文档；spawn 三类 subagent |
+| **analysis** | `subagent_type: "analysis"` | 诊断（routine 轮间续用 / 枯竭-pivot 时 fresh，见生命周期节）：读 NCU+SASS+PTX+源码/diff，按**绝对 roofline** 判 verdict，写本轮 `analysis.md`+`summary.md`+下一轮 `direction.md`，**recommend**（不 decide）枯竭 | 只读代码；写 `.rlcr/` 文档 |
+| **code1** | `subagent_type: "code-impl"` | **从头实现**：按 master 总纲新写一版 candidate（Write 新轮号文件）+ correctness + 5 类产物 | Write/Edit（hook 放行新文件） |
+| **code2** | `subagent_type: "code-iter"` | **渐进优化**：`cp v<N-1>→v<N>` 后按 analysis 的 `direction.md` 对 v<N> 改一个 lever（**无 Write 工具，cp+Edit**）+ correctness + 5 类产物 | cp(Bash)+Edit |
+
+### spawn 树是扁平的（关键）
+
+**master 是唯一 spawner**，所有 subagent 都由 master 起——**不要做嵌套 spawn**
+（analysis 再去 spawn code2 会踩子 agent 嵌套限制）。所谓「code1 配 master / code2 配
+analysis」是**逻辑配对，靠读哪个 artifact 实现**，不是 spawn 关系：
+- code1「跟 master」= code1 读 master 写的总纲 `kernel-architecture.md`
+- code2「跟 analysis」= code2 读 analysis 写的 `rounds/r<N>/direction.md`
+
+**spawn 每个 subagent 时，prompt 里只给最小上下文**（不塞尝试历史）：
+`AGENT_REPO=<本 agent 仓库绝对路径>`、`CAMPAIGN_DIR=<当前 /tmp/slug>`、**本轮轮号 N**、
+目标 module、（code2 还要）**上一版文件 `v<N-1>` 路径**（它 cp 成 `v<N>` 再改）。其余一律让 subagent 从磁盘自己读。
+
+### Agent 间信息交互：全靠文档（artifact 即契约）
+
+**铁则：agent 之间的实质信息只通过磁盘文档（`.rlcr/current/` 下的 artifact）流动。**
+spawn 的 `prompt` 与 subagent 的 return 只是**指针**（"叫谁去读哪份文档"），不承载实质
+内容。**subagent 之间从不直接通信**——所谓"配对"都是"读对方写的文档"。这样才同时拿到
+clean context、抗压缩、单一真相、互不直连。下表是**完整的读写契约**（谁写→谁读）：
+
+| 文档（相对 `.rlcr/current/`） | 写者 | 读者 | 作用 |
+|---|---|---|---|
+| `kernel-architecture.md`（总纲） | master | code1 | 架构蓝图 + 4d-0 选定的原语 |
+| `architecture-ledger.md` | master | master / analysis | 战略层反绕圈台账（试过的架构/ceiling/弃因） |
+| `goal-tracker.md` | master | analysis | 绝对 roofline 目标 + baseline 参照 |
+| `module-tracker.json` | master | master / analysis | 模块清单与完成状态 |
+| `baseline-analysis.md` + `profiles/baseline.*` | analysis(baseline 模式) | master | 设计总纲的依据 |
+| `decomposition.md` / `global-strategy.md` | analysis(Step 6) | master | 模块分解 + 全局策略 |
+| `rounds/r<N>/direction.md` | analysis | code2 | **本轮精细方向**（核心配对） |
+| `solution/<family>_v<N>.<ext>` + `rounds/r<N>/candidate.*`（ptx/cubin/sass/res-usage/nvdisasm/ncu-rep/metrics） | code1 / code2 | analysis | 本轮版本源码 + 5 类 SASS 产物 + NCU |
+| `rounds/r<N>/analysis.md` | analysis | master / 下一轮 analysis | 完整证据 + verdict |
+| `rounds/r<N>/summary.md` | analysis（从 git diff 重建） | master | 本轮 diff 统计 |
+| `summary.md`（滚动索引，一行一轮） | analysis | master / analysis | 轨迹（平时扫它，不重读原始 dump） |
+| living lessons（campaign 副本） | analysis（写/prune） | 全体 | 教训沉淀；master finalize 时回灌全局 |
+| `state.md`（`当前轮: r<N>` 行 / verdict / 最新 NCU duration） | master（轮号行）+ analysis（verdict/duration） | 全体 + **hook** + SessionStart 进度卡 | 进度 / 抗压缩恢复 |
+| `.initial-impl-done` / `.direction-read-marker`（机械 marker） | code1（建锁）/ hook（读 direction 时刷新） | **hook** | 防重写 / 先读方向 / SASS 门槛的判定依据 |
+
+> 非文档的两个指针通道（不可消除的最小量）：**spawn prompt**（master→subagent，给路径+
+> 轮号+目标）、**return text**（subagent→master，给 verdict/指向哪份文档，限字数）。
+> 二者都**不复述历史**——要历史就读 `summary.md` / `analysis.md`。
+
+### subagent 生命周期与上下文策略（保留 vs 故意丢弃）
+
+「优化器不该每轮失忆，诊断器故意失忆」——两个角色的上下文策略**相反**，按需选定：
+
+| 角色 | 跨轮上下文 | 寿命 | 为什么 |
+|---|---|---|---|
+| **code2** | **SendMessage 续用同一实例**（保留对 kernel 的「手感」：MODULE 边界、试过什么、寄存器预算、layout 怪癖） | **一个架构**（master re-arch 才丢弃、起新 code2） | 连续性有价值，每轮丢掉重读既浪费又丢细微判断 |
+| **analysis（routine 轮间分析）** | **SendMessage 续用同一实例** | 一个架构 | 连续看「这轮 lever 有没有用 + 连续几轮趋势」更顺、更自然；带着对轨迹的理解判进退 |
+| **analysis（枯竭/pivot 诊断）** | **起一个 fresh 实例** | 一次性 | 这是最怕「舍不得自己主意」的决策点；新鲜眼睛抗确认偏差/抗重复循环（IterKernel 自欺史需要），可兼作对抗式复核 |
+| **code1** | 每次新实例 | 一个架构（一次性） | 每代架构本就是从零实现，无续用语义 |
+
+> **对齐 auto-gpu-kernel**：它的主循环是**连续**做 routine 测/判的，只有 `research`
+> agent（诊断 plateau / 是否 pivot）才 fresh。这里 routine analysis 续用 = 对应它的主
+> 循环；pivot analysis fresh = 对应它的 research。不要把 freshness 套到每一轮。
+
+- **续用不与 hook 冲突**：续用的 code2/analysis 每轮仍须 Read 本轮 `direction.md`/产物
+  （hook 强制），marker 按文件 mtime 判，照常放行。
+- **不变式（无论续用还是 fresh 都要守）**：`summary.md`（趋势）+ 每轮 `analysis.md`
+  （附 NCU/SASS 证据）必须**自足到能重建轨迹**——因为 pivot 用 fresh 实例、且续用实例
+  攒久了照样会被压缩、得从磁盘恢复。「fresh ≠ 看不见历史」：fresh analysis 靠**读**
+  summary.md 趋势 + 下钻相关轮 analysis.md + `sass_hist_diff.sh` 看效果，而非靠记忆。
+
+### 源文件版本命名（v<N>，按全局轮号）—— code1 / code2 都遵守
+
+**每个产代码的轮 N 都把源码写成一个独立版本文件** `solution/<family>_v<N>.<ext>`
+（C++ 路径 `.cu`，CuTe DSL 路径 `.py`）。**`v` 的数字 = 全局轮号 N**，与 `rounds/r<N>/`
+一一对应（vN ↔ rN）。
+
+- **round 1 = 初始从头实现（code1）= v1。** 之后：
+  - **code2 渐进轮 N**：`cp solution/<family>_v<N-1>.<ext> solution/<family>_v<N>.<ext>`
+    （Bash 建**新文件**，防重写 hook 放行新文件）→ 对 **v<N>** 做**一个 lever 的 Edit**
+    （Edit 触发"先读方向"+SASS 门槛，纪律/门槛不丢）。"渐进"= `diff v<N-1> v<N>` 只含
+    一个 lever（analysis 核对）。
+  - **code1 re-arch 轮 N**：直接 Write 全新 `<family>_v<N>.<ext>`（FROM SCRATCH）。
+- code2 **仍无 Write 工具**：靠 `cp`(Bash)+`Edit` 实现"复制上一版 + 改一处"，从工具层
+  杜绝凭空整文件重写；no-rewrite 由 cp-自上版 + analysis 的"一 lever diff"核对共同保证。
+- 每轮把 benchmark adapter / ncu runner 的 import 指向本轮 **v<N>**。
+- 全部 v1..vn 留在 `solution/`（每轮源码都是一等文件）：跨轮直接 diff；finalize 按 NCU
+  选最优 vN 即 `git checkout`/直接用该文件，无需 git 考古。
+
+### 两个循环
+
+```
+外循环（战略，master 主导）
+  analysis(读 baseline) → master 定总纲(Step 4d + 4d-ceiling) + 记 architecture-ledger
+     → code1 从头实现(Step 5)
+  ……（内循环若干轮）……
+  analysis 报「接近枯竭」 → master 丢弃门槛判定 → 若丢弃：改总纲 + ledger → code1 重写新文件
+
+内循环（战术，analysis↔code2，master 不插手）
+  master 设 state.md「当前轮: r<N>」 → spawn code2(cp v<N-1>→v<N>, 读 r<N>/direction.md,
+     对 v<N> 改一个 lever, 产物) → spawn analysis(读产物+diff v<N-1>↔v<N>, 写
+     analysis.md/summary/r<N+1>direction, verdict)
+     → master 读 analysis 的精简 return：CONTINUE 就继续内循环；「枯竭建议」才上浮到外循环
+```
+
+**反应式，不固定 cadence**：master 只在 analysis 报上「接近枯竭 / 触发 pathology」时
+介入战略判断，**不每轮重度干预**内循环；不达标也不主动喊停（无轮次上限）。
+
+### master 的「丢弃当前总纲」门槛（外循环的铰链）
+
+analysis 只给**带证据的枯竭建议**；**扣丢弃扳机的是 master**（提方向的人不判自己方向
+死活，避免确认偏差）。master 收到枯竭建议后，按下面两关判定，**双向**（可强制丢弃，
+也可强制再磨）：
+
+1. **judge by ceiling, not current**：比的是**架构的结构上限**（4d-ceiling），不是当前
+   NCU 数字。新架构 r1 比成熟旧架构慢是正常的——只要它结构上限更高就值得换。**绝不**
+   因「当前更慢」拒绝换架构，也**绝不**因「这轮退了一点」就丢弃（铁律#3：局部低谷≠死路，
+   读全轨迹 `summary.md` 确认不是低谷）。
+2. **pathology checklist**（逐条核，命中才有理由丢弃 / 才知道往哪重定）：
+   - **错瓶颈**：在 memory-bound kernel 上磨 compute（或反之）——重判 bound 再定向。
+   - **缺基本功**：warp-spec / TMA / ldmatrix / stream-K 等该上的核心技术没上 → 这不是
+     「枯竭」，是总纲一开始没到 ceiling，应 re-arch 补齐。
+   - **结构焊死**：瓶颈是吞吐 stall（非依赖气泡）/ 再加并发必 throttle / 更多累加器必
+     spill——本方向结构不可约 → 换**根本不同的并发结构**。
+   - **重复循环**：换名字绕回试过的架构（查 `architecture-ledger.md`）→ 禁止重试，另寻。
+   - **过度工程**：复杂度本身堵死了进一步优化 → 简化或换路。
+   - **正确性墙**：连续不同思路都精度/编译失败 → 多半是数值/算法,先解 correctness。
+
+   **丢弃的硬证据**（缺一不准丢，对应 analysis 的枯竭门槛）：SASS 调度层证据(结构不可约)
+   + 至少一次反向实验实测退化 + 当前 %roofline + 全轨迹（非低谷）。证据不足 → **强制
+   再磨一轮**（让 analysis 写新 direction、code2 继续）。
+
+   判丢弃 → 更新 `kernel-architecture.md`（写清旧架构上限为何不够 + 新架构如何达 ≥90%
+   roofline）+ 追加 `architecture-ledger.md` 一条（旧架构、实测 ceiling、弃因、证据）
+   → spawn **新 code1** 从头实现（新轮号文件，FROM SCRATCH，**保持锁、不 rm**）→ 回内循环。
+
+### 抗压缩 / resume 约定（folder reservation）
+
+某轮目录 `rounds/r<N>/` 里 `direction.md` 存在但 `analysis.md` 不存在 ⇒ **该轮已开未完**，
+按 Step 7 的 a/b/c 续做未完成的产物，**不要重开新轮、不要跳过未生成的产物**。master
+每轮把 `state.md` 的「当前轮: r<N>」与 verdict/最新 NCU duration 维护好（SASS 门槛 hook
+与 SessionStart 进度卡都依赖它）。
+
+### 新增 artifact（都在 `.rlcr/current/`，不 commit）
+
+- `architecture-ledger.md`（master 持有）—— 战略层反绕圈记忆：试过哪些**架构/并发结构**、
+  各自实测到的 ceiling、为何弃（附证据）。每次 re-arch 前必查、之后必追加。
+- `summary.md`（analysis 维护）—— **一行一轮**的滚动索引：
+  `r<N> | 改了什么 | NCU <µs> | <X>% roofline | <verdict>`。analysis/master 平时**扫它
+  重建轨迹**，只在需要时下钻读某轮原始 dump（解决长 campaign 的 context 缩放）。
+- per-campaign **living lessons**（analysis 维护）—— 发现某条 lesson 是死胡同/错误就
+  **prune 掉**，沉淀有效的；master 在 finalize 时把可复用教训回灌 `AGENT_REPO/docs/
+  kernel_optimization_lessons.md`。
+
+### 角色 ↔ Step 映射
+
+- **Step 1–2**（理解需求 / 建仓）：master。
+- **Step 3 + 4a/4b/4c**（profile+分析 baseline）：master spawn **analysis**（baseline 模式）。
+- **Step 4d + 4d-ceiling**（定总纲 + 结构上限门槛）：master，写 `kernel-architecture.md`
+  + `architecture-ledger.md` 首条。
+- **Step 5**（首次从头实现 = **round 1 = v1**）：master spawn **code1**（写 `<family>_v1`）。
+- **Step 6**（profile v1 + 模块分解 + 写**首个迭代轮** `rounds/r2/direction.md`）：master
+  spawn **analysis**（v1 的分析落 `rounds/r1/`；r1 是初始实现轮）。
+- **Step 7 内循环**（从 round 2 起）：每轮 master 设 state 轮号 → spawn **code2**
+  （cp v<N-1>→v<N> + 7a 改一 lever + 7b 产物）→ spawn **analysis**（7b 解读 + 7c
+  分析/verdict/下轮 direction）。verdict=CONTINUE 继续；枯竭建议上浮到 master 丢弃门槛。
+- **Step 8**（集成）/ **Step 9**（finalize，按 NCU 选最优）/ **Step 10**（报告）：master
+  （集成的逐模块退化检查可 spawn analysis 复核）。
+
+> 下面 Step 1–10 的所有硬纪律（FROM SCRATCH、防重写、NCU 权威、SASS 门槛、4d-ceiling、
+> 90% roofline、退化不回退）**全部不变**，只是分摊到上述角色执行。各角色契约见
+> `.claude/agents/{analysis,code-impl,code-iter}.md`。
+
+---
+
 ## 前置：读取规则和知识
 
-在做任何事情之前，必须读取以下文件：
+在做任何事情之前，必须读取以下文件（路径相对 `AGENT_REPO`）。**分工**：master 必读
+1–4（护栏/契约/教训，战略判断要用）；NCU/PTX/KernelWiki 的深读由 **analysis/code**
+subagent 在各自契约里按需做（master spawn 时把 `AGENT_REPO` 路径传给它们即可，不必自己
+通读 5–7）：
 
 1. `docs/kernel_optimization_rules.md` — 优化护栏
 2. `docs/benchmark_contract.md` — benchmark 方法论
@@ -208,9 +398,13 @@ mkdir -p .rlcr/current/rounds .rlcr/current/profiles
 
 创建以下文件：
 - `.rlcr/current/plan.md` — 优化计划
-- `.rlcr/current/goal-tracker.md` — 目标追踪
+- `.rlcr/current/goal-tracker.md` — 目标追踪（目标=90% roofline 上限；参照=baseline）
 - `.rlcr/current/module-tracker.json` — `{ "modules": [], "completedModules": [] }`
-- `.rlcr/current/state.md` — 当前阶段
+- `.rlcr/current/state.md` — 当前阶段（含「当前轮: r<N>」权威轮号行，由 master 每轮维护）
+- `.rlcr/current/architecture-ledger.md` — **（master 持有）战略层反绕圈台账**：试过哪些
+  架构/并发结构、各自实测 ceiling、弃因+证据。初始为空，每次 re-arch 前查、后追加。
+- `.rlcr/current/summary.md` — **（analysis 维护）一行一轮的滚动索引**，初始只有表头
+  `r<N> | 改了什么 | NCU(µs) | %roofline | verdict`。
 
 在独立 repo 中 git commit。后续所有 kernel 代码修改、benchmark 结果都在此 repo 中提交。
 
@@ -300,6 +494,30 @@ layout、cp.async/TMA、ldmatrix、mbarrier、cache 修饰符、指令的 SM 版
 
 写 `.rlcr/current/baseline-analysis.md`（必须包含具体数值，不允许模糊描述）。
 
+### 4d-0. 实现原语选择（先评估算子复杂度，再选语言/原语）
+
+**candidate 不强制 CUDA**。在设计架构前，master 先评估**算子复杂度 + 达到 ≥90%
+roofline 所需的抽象层级**，在下面三者中选一（选择理由写进 `kernel-architecture.md` +
+`architecture-ledger.md`，并把所选原语与对应 **build/profile 命令**写进 `config.toml`）：
+
+| 原语 | 何时选 | 控制力 / 工作量 |
+|---|---|---|
+| **纯 CUDA + PTX 薄封装** | 算子结构简单~中等；或瓶颈在某条指令的手工调度（需要库藏不住的指令级控制）；或算子不贴合标准 GEMM/conv 模板 | 控制力最强 / 工作量最大（项目原生强项） |
+| **CUTLASS**（C++ 模板：Collective/Builder/GemmUniversal/epilogue fusion/CuTe layout 代数均**允许**） | 算子是标准/近标准 GEMM/conv/attention，CUTLASS 已有逼近 SOTA 的构件，手写多阶段 pipeline/warp-spec/TMA 成本过高 | 控制力中 / 工作量低、起点高 |
+| **CuTe DSL**（Python） | 要 CUTLASS 级抽象（layout / copy & MMA atom / pipeline），但需要比 C++ 模板更灵活的自定义 fusion 或更快迭代，且裸 PTX 不现实 | 控制力中高 / 迭代最快 |
+
+> Triton 不在候选集。选定后**这一代架构内统一用该原语**，不要半路混搭；**re-arch
+> 可以换原语**（在 ledger 写明换因）。
+>
+> **无论选哪个，下列纪律全部不变**：FROM SCRATCH（不接任何已有实现为代码起点——
+> 「从零」= 用所选原语**自己搭**，CUTLASS 路径=自己用 CUTLASS 构件组装而非复制别人的
+> CUTLASS kernel）、每轮 5 类 SASS 产物 + NCU 实测、渐进 Edit / MODULE 边界 / 一轮一
+> lever、退化不回退、≥90% roofline 完成判据。
+>
+> **方法学随原语自适应**：SASS 静态分析（`cuobjdump`/`nvdisasm`）对三者都成立（CuTe
+> DSL 从 JIT 产出的 cubin 提取）；但 build/profile 具体命令按 `config.toml`——C++ 用
+> `nvcc`，CuTe DSL 用其 JIT 后再 dump cubin。**详细原语约束见 Step 5「代码约束」。**
+
 ### 4d. 设计 Kernel 架构
 
 > **核心原则：第一步就把设计做到上限（design to the ceiling）。**
@@ -364,24 +582,45 @@ git commit。
 
 ## Step 5: 实现完整 Kernel
 
-### 代码约束
+> **执行者：master spawn `code-impl`（code1）。** 本步全部纪律即 code1 契约。master 只
+> 负责把总纲 `kernel-architecture.md` 备好、传 `AGENT_REPO`/`CAMPAIGN_DIR`/轮号，然后读
+> code1 的 return（新文件路径 / correctness / 初始 NCU / 总纲是否全落地）。
 
-- 仅限 CUDA C++ —— 不用 Triton，不用 CuTe DSL
-- 裸 PTX inline assembly（TMA、WGMMA/UMMA、mbarrier、fence）
-- 薄封装（一个 inline function = 一条 PTX 指令，DeepGEMM 风格）
-- **禁止**：
-  - `#include "cutlass/*.h"` 或 `#include "cute/*.hpp"`（`cutlass/numeric_types.h` 除外）
-  - `cutlass::gemm::collective::CollectiveBuilder`
-  - `cutlass::gemm::kernel::GemmUniversal`
-  - `cutlass::gemm::device::GemmUniversalAdapter`
-  - `cutlass::epilogue::collective::CollectiveBuilder`
-  - `using namespace cute`
-  - 任何 CuTe layout algebra
+### 代码约束（按 4d-0 选定的原语，三选一；本节是权威清单）
+
+实现语言/原语**不固定 CUDA**，按 Step 4d-0 评估算子复杂度后选定的那一个执行。
+Triton 不在候选集。无论哪条路径都必须 FROM SCRATCH（不复制/不继承任何已有实现）。
+
+**A. 纯 CUDA + PTX 薄封装**（默认强项路径）
+- CUDA C++ + 裸 PTX inline assembly（TMA、WGMMA/UMMA、mbarrier、fence）
+- DeepGEMM 风格薄封装（一个 inline function = 一条 PTX 指令）
+- 此路径**禁止**退回高层模板：`cutlass::*` 的 Collective/Builder/GemmUniversal*/
+  epilogue CollectiveBuilder、`using namespace cute`、任何 CuTe layout 代数、
+  `#include "cute/*.hpp"`（`cutlass/numeric_types.h` 仅作 dtype 定义可用）。
+  —— 既然选了"纯手写"，就不要半路混进 CUTLASS/CuTe 抽象。
+
+**B. CUTLASS**（C++ 模板）
+- **允许**使用 CUTLASS 的 Collective/Builder、GemmUniversal*、epilogue fusion、
+  CuTe layout 代数等全部构件——这正是选它的目的：用现成高性能构件快速逼近 ceiling。
+- 仍须 FROM SCRATCH：自己用 CUTLASS 构件**组装**本算子的 kernel，**不复制**他人/旧
+  campaign 现成的 CUTLASS kernel 文件再改。
+- 调参（tile/stage/cluster/epilogue 等模板参数）按渐进纪律：一轮一 lever、Edit、
+  MODULE 边界。
+
+**C. CuTe DSL**（Python）
+- 用 CuTe DSL 的 layout / copy & MMA atom / pipeline 等抽象自定义实现。
+- FROM SCRATCH 同上：自己写，不接已有 .py 实现。
+- 源文件是 `.py`；build/profile（JIT 后 dump cubin、`cuobjdump`/`nvdisasm` 取 SASS）
+  命令以 `config.toml` 声明为准。
+
+> 三条路径共有：每轮 5 类 SASS 产物 + NCU（SASS 对 JIT 产物同样提取）、渐进 Edit /
+> 一轮一 lever、退化不回退、≥90% roofline。**`config.toml` 必须记录所选原语与对应
+> build/profile 命令**，下文及 code agent 里写 `nvcc …` 处，按 config.toml 实际命令执行。
 
 ### 实现
 
-1. 按 `direction.md` **从头**实现完整 CUDA kernel，写在 `solution/`（新开空文件,
-   不复制/不继承任何已有 kernel——见全局铁律 -2 FROM SCRATCH）
+1. 按 `direction.md` 用 **4d-0 选定的原语从头**实现完整 kernel，写在 `solution/`
+   （新开空文件,不复制/不继承任何已有 kernel——见全局铁律 -2 FROM SCRATCH）
 2. 插入 `// MODULE: <id> BEGIN/END` 标记
 3. 写 benchmark adapter
 4. `python bench/benchmark.py --correctness-only` — 正确性全部通过（正确性 gate 已
@@ -408,10 +647,10 @@ git commit。
 1. 先更新 `.rlcr/current/kernel-architecture.md`：写清"为何旧架构上限不够"
    （引用结构上限分析 + 实测证据）与新架构如何达到 ≥90% roofline 上限目标。
 2. 新架构**直接 Write 一个新源文件**（锁开着也放行,因为是新文件不是覆盖），
-   文件名按**全局递增轮次编号**命名（如 re-arch 在第 8 轮就叫 `<family>_r8.cu`，
-   保持"文件名↔轮次"单调对应）。**不要**用 `v2`/`v3` 这类与轮次脱钩的名字，
-   **也不要** `rm`/`touch` 那个锁。保留旧实现供对比；绝不 Write 覆盖旧文件本身
-   （覆盖已存在文件仍被 hook 拦）。
+   文件名按**版本=全局轮号**命名 `<family>_v<N>.<ext>`（如 re-arch 在第 8 轮就叫
+   `<family>_v8.cu`，保持"文件名↔轮次"单调对应；见编排节「源文件版本命名」）。
+   `v` 的数字必须 = 轮号 N，**不要**用与轮次脱钩的随意编号，**也不要** `rm`/`touch`
+   那个锁。保留旧版本文件供对比；绝不 Write 覆盖旧文件本身（覆盖已存在文件仍被 hook 拦）。
 3. 把 candidate ABI / adapter 切到新文件；旧文件在新版验证更快后用 `git rm` 删除。
 4. 新文件插 MODULE 标记，跑 correctness + benchmark，写 `rounds/r<N>/` 的
    direction/summary/analysis + 5 类 SASS 产物，commit "re-architecture: <新架构>
@@ -420,6 +659,11 @@ git commit。
 ---
 
 ## Step 6: Profile 新 Kernel + 模块分解
+
+> **执行者：master spawn `analysis`。** 初版 = round 1 = v1，其分析落 `rounds/r1/`。
+> analysis 读 v1 产物做对比+模块分解，写 `decomposition.md`/`global-strategy.md` 与
+> **首个迭代轮** `rounds/r2/direction.md`（round 2 起进内循环）；master 据其 return 更新
+> `module-tracker.json` 后进入 Step 7 内循环。
 
 ### 6a. NCU 实测
 
@@ -454,12 +698,20 @@ Reduction 分解、共享资源识别、优化顺序）。
 4. 写 `.rlcr/current/decomposition.md`
 5. Gap analysis → 每模块瓶颈定位（NCU 证据 + SASS 证据）
 6. 全局优化策略 → 写 `.rlcr/current/global-strategy.md`
-7. 写第一轮方向 `.rlcr/current/rounds/r1/direction.md`（在文档内标明本轮目标模块）
+7. 写**首个迭代轮**方向 `.rlcr/current/rounds/r2/direction.md`（round 1=初始 v1；首个
+   迭代轮 = round 2 → code2 产出 v2。在文档内标明本轮目标模块）
 8. 更新 `module-tracker.json`，git commit（只提交 `solution/` 代码与 `docs/`）
 
 ---
 
 ## Step 7: 模块循环 — RLCR 迭代
+
+> **执行者：内循环由 master 编排 `code-iter`（code2）↔ `analysis`。** 每轮 master：
+> ① 设 `state.md`「当前轮: r<N>」②spawn code2（7a 改一个 lever + 7b 产物）③spawn
+> analysis（7b 解读 + 7c 写 analysis/summary/下轮 direction + verdict）④读 analysis 的
+> 精简 return。verdict=CONTINUE → 下一轮；analysis 报「接近枯竭」→ 上浮到「多 agent
+> 编排」节的 **master 丢弃门槛**（ceiling 判据 + pathology checklist）。下面 7a/7b/7c 的
+> 纪律即 code2/analysis 各自契约的镜像。
 
 按 suggestedOrder 对每个模块循环。**无轮次上限**——只要 roofline 未达 90% 且
 仍有可尝试的方向，就继续优化；某模块卡住就转下一个模块或拓宽搜索，仅在目标
@@ -490,10 +742,10 @@ Reduction 分解、共享资源识别、优化顺序）。
    号判定、检查错对象（这正是历史上 SASS 被绕过的根因）。
 2. 如有上轮 P0/P1 issues 先修复
 3. **修改前**：
-   - `git stash` 或确认工作区干净
-   - 定位 `// MODULE: <id> BEGIN` 到 `// MODULE: <id> END` 的行范围
+   - `cp solution/<family>_v<N-1>.<ext> solution/<family>_v<N>.<ext>`（建本轮版本文件），
+     Read v<N>，定位 `// MODULE: <id> BEGIN` 到 `// MODULE: <id> END` 的行范围
 4. **修改时**：
-   - **必须使用 Edit 工具**做针对性修改，**禁止用 Write 覆盖整个文件**
+   - **只对 v<N> 用 Edit 工具**做针对性修改（code2 无 Write 工具；**不从零重写整文件**）
    - 主改动在目标 MODULE 内；MODULE 外的改动必须是被主改动**因果驱动**的联动：
      - ✅ 共享 helper 函数签名/实现变更（被本模块调用）
      - ✅ shared memory 总量、launch config（smem_size、grid/block）
@@ -503,9 +755,10 @@ Reduction 分解、共享资源识别、优化顺序）。
      - ❌ 与本轮优化目标无因果关系的代码改动
    - 每次 Edit 只改一个逻辑点（一条优化策略），不要一次改多个不相关的地方
 5. **修改后验证**：
-   - `git diff -- solution/` — 检查所有改动
+   - **`diff solution/<family>_v<N-1>.<ext> solution/<family>_v<N>.<ext>`** — 检查本轮所有
+     改动（v<N> 对 git 是整文件新增，故用版本间 diff，不用 `git diff`）
    - MODULE 内的改动：正常
-   - MODULE 外的改动：**每一处都必须在 rounds/r<N>/summary.md 中说明因果关系**（"改了 X 是因为模块内改了 Y，导致 Z 接口不兼容"）。无法说明因果关系的外部改动 → 回退
+   - MODULE 外的改动：**每一处都必须在 rounds/r<N>/summary.md 中说明因果关系**（"改了 X 是因为模块内改了 Y，导致 Z 接口不兼容"）。无法说明因果关系的外部改动 → 撤销那处 Edit
    - `python bench/benchmark.py --correctness-only` — 正确性必须通过（**这一步是
      gate：错的代码不能进入 profile/benchmark**）
    - `python bench/benchmark.py` — 仅作**粗筛 sanity**（量级是否合理、有没有跑飞），

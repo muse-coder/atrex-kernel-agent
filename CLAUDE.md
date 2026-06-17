@@ -2,18 +2,53 @@
 
 GPU kernel 优化项目。使用 `/optimize-kernel <kernel描述>` 启动优化流程。
 
-## 实现约束
+## 多 agent 架构（master + analysis + code1 + code2）
 
-优化后的 kernel 必须是 **CUDA C++**，底层使用 PTX inline assembly 直接操控
-硬件（TMA、WGMMA/UMMA、mbarrier、fence 等）。使用 DeepGEMM 风格的薄封装
-（一个 inline 函数对应一条 PTX 指令）。**禁止** CUTLASS 的 Collective/Builder/
-Pipeline 抽象、`GemmUniversal*` 与 CuTe layout 代数；唯一允许的 CUTLASS 头文件
-是 `cutlass/numeric_types.h`（仅用于 dtype 定义）。即使某些功能（复杂 epilogue
-fusion、多阶段 pipeline 编排等）从零写更费劲，也必须自己用 PTX 薄封装实现，
-不得退回到 CUTLASS/CuTe 模板。**权威禁止清单以
-`.claude/commands/optimize-kernel.md` Step 5「代码约束」为准**（其余文档与其冲突
-时以该命令文档为准）。此约束只针对从零实现的 candidate；baseline 可用任意现成
-库实现。
+> 摘要。**权威单一来源是 `.claude/commands/optimize-kernel.md`「## 多 agent 编排」节**；
+> 各角色契约在 `.claude/agents/{analysis,code-impl,code-iter}.md`。
+
+`/optimize-kernel` 跑的会话 agent 是 **master（战略层 orchestrator）**：它**不亲手写
+kernel、不读原始 SASS dump**，而是用 **Agent 工具** spawn 三类 subagent，靠**磁盘
+artifact 交接（不在 prompt 里塞尝试历史）**。**不用 Workflow**——这是串行+自适应判断+
+交互式 master 的循环，是 Agent 工具的正命。
+
+- **master**：定/重定优化总纲、扣「丢弃当前总纲」扳机（按 ceiling 判据 + pathology
+  checklist，双向）、守 90% roofline 目标、持 `architecture-ledger.md`、commit/finalize。
+  **唯一 spawner**（扁平树，不嵌套 spawn）。
+- **analysis**（`subagent_type: analysis`）：clean-context 诊断，读 NCU/SASS/PTX/源码，
+  按**绝对 roofline** 判 verdict，写 `analysis.md`+`summary.md`+下轮 `direction.md`，
+  **recommend**（不 decide）枯竭。只读代码。
+- **code1 = code-impl**：从头实现（Write 新文件）；**code2 = code-iter**：渐进优化
+  （**无 Write 工具**，靠 `cp` 上一版 + `Edit` 一处，从工具层无法凭空重写）。两者各自跑
+  correctness + 5 类 SASS 产物 + NCU。
+- **源文件版本命名**：每个产代码的轮 N 都写成独立版本文件 `solution/<family>_v<N>.<ext>`
+  （`v` 数字 = 全局轮号，round 1 = 初始 v1；code2 轮 N = `cp v<N-1>` + 一 lever）。全部
+  v1..vn 留存，便于跨轮 diff 与 finalize 按 NCU 选最优 vN。权威规则见 optimize-kernel.md
+  「源文件版本命名」。
+
+**双循环**：内循环 `code2↔analysis`（master 不插手，反应式）；analysis 报枯竭才上浮到
+外循环由 master 判丢弃/re-arch。现有所有硬纪律（FROM SCRATCH / 防重写 / NCU 权威 /
+SASS 门槛 / 90% roofline）不变，只是分摊到各角色；hook 按 cwd+file_path 校验，子 agent
+照常受约束。
+
+## 实现约束（原语三选一，按算子复杂度评估后定）
+
+candidate **不固定 CUDA**。master 在 Step 4d-0 评估算子复杂度 + 达 ≥90% roofline 所需
+抽象层级后，从三者选一（Triton 不在候选集）：
+
+1. **纯 CUDA + PTX 薄封装**（DeepGEMM 风格，一函数=一条 PTX）—— 结构简单~中等、或瓶颈
+   在需要手工调度的指令级控制、或不贴标准模板时。此路径内**禁止**混入 CUTLASS
+   Collective/Builder/GemmUniversal*/CuTe layout 代数（`cutlass/numeric_types.h` 仅作
+   dtype 定义例外）。
+2. **CUTLASS**（C++ 模板，Collective/Builder/epilogue fusion/CuTe layout 代数均**允许**）
+   —— 标准/近标准 GEMM/conv/attention，手写多阶段 pipeline 成本过高时。
+3. **CuTe DSL**（Python）—— 要 CUTLASS 级抽象但需更灵活 fusion/更快迭代、裸 PTX 不现实时。
+
+无论选哪个：**FROM SCRATCH**（自己用所选原语搭，不复制任何已有实现——CUTLASS 路径=
+自己用其构件组装而非抄现成 kernel）、每轮 5 类 SASS 产物+NCU、渐进 Edit/一轮一 lever、
+退化不回退、≥90% roofline。所选原语 + build/profile 命令写进 `config.toml`。**权威清单
+以 `.claude/commands/optimize-kernel.md` Step 4d-0 + Step 5「代码约束」为准**（冲突时以该
+命令文档为准）。此约束只针对从零实现的 candidate；baseline 可用任意现成库实现。
 
 ## 硬性要求（最高优先级，不可违反）
 
