@@ -1,9 +1,9 @@
 [submodule "external/KernelWiki"]
 	path = external/KernelWiki
-	url = git@github.com:mit-han-lab/KernelWiki.git
+	url = https://github.com/mit-han-lab/KernelWiki.git
 [submodule "external/ncu-report-skill"]
 	path = external/ncu-report-skill
-	url = git@github.com:DongyunZou/ncu-report-skill.git
+	url = https://github.com/DongyunZou/ncu-report-skill.git
 [submodule "external/CudaSkill"]
 	path = external/CudaSkill
 	url = https://github.com/technillogue/ptx-isa-markdown.git
