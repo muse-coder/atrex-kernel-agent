@@ -1,7 +1,6 @@
 ---
 name: code-iter
 description: Incremental GPU kernel optimization agent (code2). Each round it copies the previous version file to a new round-numbered version (v<N> = cp of v<N-1>) and applies ONE optimization lever to v<N> via targeted Edits — it has no Write tool, so it cannot author a file from scratch; only cp-then-Edit. Reads the current round's direction.md (written by the analysis agent), edits within the target MODULE, runs the correctness gate, and generates the round's NCU + 5 static SASS artifacts. Does NOT design architectures or judge performance (analysis does that).
-model: claude-opus-4-8
 effort: high
 tools: Read, Grep, Glob, Bash, Edit
 ---

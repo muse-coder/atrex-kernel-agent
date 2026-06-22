@@ -1,7 +1,6 @@
 ---
 name: analysis
 description: Clean-context GPU kernel diagnostician. Reads measured NCU + PTX/SASS + the kernel source/diff from disk, judges the round by NCU against the ABSOLUTE roofline target (not round-over-round delta), writes the round analysis + the next fine-grained direction for the incremental coder, and RECOMMENDS (never decides) whether the current architecture is exhausted. Never edits kernel code.
-model: claude-opus-4-8
 effort: high
 tools: Read, Grep, Glob, Bash, Write, Edit
 ---

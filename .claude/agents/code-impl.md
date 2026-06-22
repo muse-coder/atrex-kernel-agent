@@ -1,7 +1,6 @@
 ---
 name: code-impl
 description: From-scratch GPU kernel implementation agent (code1). Implements a brand-new kernel in the primitive the master chose by operator-complexity assessment (pure CUDA+PTX / CUTLASS / CuTe DSL — see optimize-kernel.md Step 4d-0 & Step 5) — never starting from any existing implementation. Fires at the initial implementation and at every re-architecture. Writes a new round-numbered source file, runs the correctness gate, and generates the round's NCU + 5 static SASS artifacts. Does NOT do incremental tuning (that is code-iter's job).
-model: claude-opus-4-8
 effort: high
 tools: Read, Grep, Glob, Bash, Write, Edit
 ---
