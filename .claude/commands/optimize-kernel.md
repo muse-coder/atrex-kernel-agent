@@ -42,7 +42,9 @@
 1. **渐进式修改（版本文件模型）**：Step 5 首次实现(=v1)后，**在同一架构内**的每个
    迭代轮 N 由 code2 **`cp v<N-1>→v<N>` 再对 v<N> 做一处 Edit**，每轮只改一个优化点
    （"渐进"= `diff v<N-1> v<N>` 只含一个 lever）。**严禁用 Write 覆盖 solution/ 下任何
-   已存在文件**（code2 无 Write 工具；cp 只产生**新版本文件**，不覆盖旧版本）。**边界**：
+   已存在文件**——这是**纪律要求**，**不再由 hook 机械强制**（已移除 hook 的防重写拦截
+   段），改靠 **code2 无 Write 工具 + cp 只产生新版本文件 + analysis 的一-lever diff 人工
+   核对**共同保证；code1 也须自律只 Write 新轮号文件、不覆盖旧版本。**边界**：
    此约束管的是"既定架构内的迭代纪律"，**不**约束"换架构"——当分析表明架构本身赢不了
    时，必须 STRATEGY_REVISION→重新设计→由 code1 从头实现新架构 v<N>（合法，见 Step 4d
    澄清与 Step 5）。版本命名规则见编排节「源文件版本命名（v<N>）」。
@@ -60,10 +62,12 @@
    （见"错误恢复流程"）。这是"修到正确"，不是"性能回退"。
 6. **完整 profile/分析硬门槛（gating，不可跳过）**：每一轮**必须**先完成 5 类静态产物
    （`candidate.ptx/.cubin/candidate-sass.txt/candidate-res-usage.txt/
-   candidate-nvdisasm.txt`）+ NCU 实测（`candidate.ncu-rep`、details、metrics），并写进
-   `rounds/r<N>/analysis.md`，**才能开始下一轮的 solution/ 代码修改**。这由 hook
-   (`block_solution_rewrite.py` 的 round artifact gate) 机械强制：下一轮 Edit solution/
-   时，若上一轮这些产物或 `analysis.md` 缺任一项就会被拦截。**所有轮次（含
+   candidate-nvdisasm.txt`）+ NCU 实测（`candidate.ncu-rep`、details、metrics）+
+   **正确性标记 `correctness-pass.txt`**（benchmark.py 仅在全部 workload 正确时落，缺它
+   = 上一轮 kernel 未证明正确），并写进 `rounds/r<N>/analysis.md`，**才能开始下一轮的
+   solution/ 代码修改**。这由 hook (`block_solution_rewrite.py` 的 round artifact gate)
+   机械强制：下一轮 Edit solution/ 时，若上一轮这些产物、`correctness-pass.txt` 或
+   `analysis.md` 缺任一项就会被拦截。**所有轮次（含
    re-architecture 里程碑）都必须用 `.rlcr/current/rounds/r<N>/` 目录结构**，
    否则 hook 的 direction/产物门槛失效（这正是 v2/v3 里程碑当初绕过 SASS 的原因）。
 
@@ -155,7 +159,7 @@ clean context、抗压缩、单一真相、互不直连。下表是**完整的�
 | `summary.md`（滚动索引，一行一轮） | analysis | master / analysis | 轨迹（平时扫它，不重读原始 dump） |
 | living lessons（campaign 副本） | analysis（写/prune） | 全体 | 教训沉淀；master finalize 时回灌全局 |
 | `state.md`（`当前轮: r<N>` 行 / verdict / 最新 NCU duration） | master（轮号行）+ analysis（verdict/duration） | 全体 + **hook** + SessionStart 进度卡 | 进度 / 抗压缩恢复 |
-| `.initial-impl-done` / `.direction-read-marker`（机械 marker） | code1（建锁）/ hook（读 direction 时刷新） | **hook** | 防重写 / 先读方向 / 完整产物门槛的判定依据 |
+| `.initial-impl-done` / `.direction-read-marker`（机械 marker） | code1（建锁）/ hook（读 direction 时刷新） | **hook** | 先读方向 / 完整产物门槛的判定依据（防重写不再由 hook 强制，见铁律#1） |
 
 > 非文档的两个指针通道（不可消除的最小量）：**spawn prompt**（master→subagent，给路径+
 > 轮号+目标）、**return text**（subagent→master，给 verdict/指向哪份文档，限字数）。
@@ -191,7 +195,7 @@ clean context、抗压缩、单一真相、互不直连。下表是**完整的�
 
 - **round 1 = 初始从头实现（code1）= v1。** 之后：
   - **code2 渐进轮 N**：`cp solution/<family>_v<N-1>.<ext> solution/<family>_v<N>.<ext>`
-    （Bash 建**新文件**，防重写 hook 放行新文件）→ 对 **v<N>** 做**一个 lever 的 Edit**
+    （Bash 建**新文件**，hook 放行）→ 对 **v<N>** 做**一个 lever 的 Edit**
     （Edit 触发"先读方向"+完整产物门槛，纪律/门槛不丢）。"渐进"= `diff v<N-1> v<N>` 只含
     一个 lever（analysis 核对）。
   - **code1 re-arch 轮 N**：直接 Write 全新 `<family>_v<N>.<ext>`（FROM SCRATCH）。
@@ -225,6 +229,14 @@ clean context、抗压缩、单一真相、互不直连。下表是**完整的�
 analysis 只给**带证据的枯竭建议**；**扣丢弃扳机的是 master**（提方向的人不判自己方向
 死活，避免确认偏差）。master 收到枯竭建议后，按下面两关判定，**双向**（可强制丢弃，
 也可强制再磨）：
+
+> **#4 fresh 实例护栏（枯竭/pivot 诊断的硬前提，自主决策不可省）**：枯竭判定与 pivot
+> 诊断**必须基于一个 fresh analysis 实例**（无前几轮记忆）——这是全流程最怕「舍不得自己
+> 主意」的点，新鲜眼睛抗确认偏差（IterKernel 自欺史的教训）。所以 master 在认真权衡丢弃
+> **之前**，必须**新起一个 fresh analysis 实例**做 pivot 诊断（**新 Agent 调用，绝不
+> SendMessage 续用那个跑了整条轨迹的 routine analysis**），并在 `architecture-ledger.md`
+> 记一行「pivot 诊断 = fresh 实例」确认。没有任何 hook 能替你识别用错了实例——这是 master
+> 的纪律；若收到 routine analysis（带记忆实例）自报「我不宜做 pivot 判定」，照此另起 fresh。
 
 1. **judge by ceiling, not current**：比的是**架构的结构上限**（4d-ceiling），不是当前
    NCU 数字。新架构 r1 比成熟旧架构慢是正常的——只要它结构上限更高就值得换。**绝不**
@@ -624,37 +636,43 @@ Triton 不在候选集。无论哪条路径都必须 FROM SCRATCH（不复制/�
    全局铁律 -2 FROM SCRATCH）
 2. 插入 `// MODULE: <id> BEGIN/END` 标记
 3. 写/更新 benchmark adapter 与 `ncu_candidate_runner.py`，指向本轮 v<N>
-4. `python bench/benchmark.py --correctness-only` — 正确性全部通过（正确性 gate 已
-   内置在 benchmark.py：poison + oracle compare；`--correctness-only` 只跑这步、跳过计时）
+4. `python bench/benchmark.py --correctness-only --round-dir .rlcr/current/rounds/r<N>`
+   — 正确性全部通过（正确性 gate 已内置在 benchmark.py：poison + oracle compare；
+   `--correctness-only` 只跑这步、跳过计时）。**全过时 benchmark.py 会落
+   `rounds/r<N>/correctness-pass.txt`**（机械正确性门槛产物，下一轮 Edit 的前置；缺=未证明
+   正确）；任何失败则不写/清除旧标记。**不可手动 touch**（不伪造 evidence）。
 5. `python bench/benchmark.py` — 仅作 sanity，记录结果但不据此下性能结论
-6. 生成本轮 `rounds/r<N>/` 的 NCU + 5 类静态产物：
+6. 生成本轮 `rounds/r<N>/` 的 NCU + 5 类静态产物（+ 步骤 4 的 `correctness-pass.txt`）：
    `candidate.ncu-rep`、`candidate-details.txt`、`candidate-metrics.csv`、
    `candidate.ptx`、`candidate.cubin`、`candidate-sass.txt`、
-   `candidate-res-usage.txt`、`candidate-nvdisasm.txt`
+   `candidate-res-usage.txt`、`candidate-nvdisasm.txt`、`correctness-pass.txt`
 7. **首次实现专属**：创建渐进式修改锁 `touch .rlcr/current/.initial-impl-done`
    - 此 marker 一旦存在，项目 hook（`.claude/hooks/block_solution_rewrite.py`）
-     会强制两条规则（基于磁盘状态，**context 压缩也冲不掉**）：
-     - **防重写**：拦截对该 campaign `solution/` 的 Write 覆盖，以及 shell
-       重写（`>`/`>>`/`tee`/`sed -i`/`truncate`/`dd` 重定向到 solution/）。
+     会强制两条 process 门槛（基于磁盘状态，**context 压缩也冲不掉**）：
      - **先读方向再改**：迭代期对 locked `solution/` 的 Edit，必须先 Read 当前轮
        的 `rounds/r<N>/direction.md`（最新的那个）才放行；没读会被拦。
-     - marker 不存在时两条都不生效（首次实现照常用 Write）。
+     - **完整产物门槛**：第 N 轮（N≥2）Edit 前，上一轮的 NCU + 5 类静态产物 +
+       `correctness-pass.txt` + `analysis.md` 必须齐全，否则拦截（见铁律#6）。
+     - marker 不存在时两条都不生效。
+   - **防重写不在此列**（hook 的防重写拦截段已移除）：Write 覆盖、shell 重定向到
+     solution/ 现在都放行，改靠 code2 无 Write 工具 + cp 版本文件模型 + 人工 diff
+     自律（见铁律#1）。
    - 后续所有 solution/ 改动必须用 Edit；动手前先读本轮 direction（hook 会强制）
 8. git commit: "initial kernel implementation"（只提交代码/必要 adapter；`.rlcr/` 不提交）
 
 ### 重新实现（re-architecture，当 4d-ceiling 或 Step 7 判定需换架构时）
 
 这是合法且必要的，不是"被禁止的重写"。re-architecture = 写一个**全新的源文件**。
-**锁全程保持上锁,不要 `rm`** —— hook 已改为「只拦覆盖已存在文件、放行新文件」,
-所以写新架构文件本来就放行,无需也**不要**摘锁(摘了忘补回来 = 纪律静默失效,
-这正是历史踩过的坑)。流程：
+**锁全程保持上锁,不要 `rm`** —— hook 不再拦 Write（防重写段已移除），写新架构文件
+本来就放行；但锁仍是「先读方向 / 完整产物」两道门槛的触发器,**摘了忘补回来 = 这两道
+门槛静默失效**(历史踩过的坑),所以无需也**不要**摘锁。流程：
 1. 先更新 `.rlcr/current/kernel-architecture.md`：写清"为何旧架构上限不够"
    （引用结构上限分析 + 实测证据）与新架构如何达到 ≥90% roofline 上限目标。
-2. 新架构**直接 Write 一个新源文件**（锁开着也放行,因为是新文件不是覆盖），
-   文件名按**版本=全局轮号**命名 `<family>_v<N>.<ext>`（如 re-arch 在第 8 轮就叫
-   `<family>_v8.cu`，保持"文件名↔轮次"单调对应；见编排节「源文件版本命名」）。
-   `v` 的数字必须 = 轮号 N，**不要**用与轮次脱钩的随意编号，**也不要** `rm`/`touch`
-   那个锁。保留旧版本文件供对比；绝不 Write 覆盖旧文件本身（覆盖已存在文件仍被 hook 拦）。
+2. 新架构**直接 Write 一个新源文件**，文件名按**版本=全局轮号**命名
+   `<family>_v<N>.<ext>`（如 re-arch 在第 8 轮就叫 `<family>_v8.cu`，保持"文件名↔轮次"
+   单调对应；见编排节「源文件版本命名」）。`v` 的数字必须 = 轮号 N，**不要**用与轮次
+   脱钩的随意编号，**也不要** `rm`/`touch` 那个锁。保留旧版本文件供对比；**绝不 Write
+   覆盖旧文件本身**（纪律要求；hook 已不再拦覆盖，靠自律守住）。
 3. 把 candidate ABI / adapter 切到新文件；旧文件在新版验证更快后用 `git rm` 删除。
 4. 新文件插 MODULE 标记，跑 correctness + benchmark，生成 `rounds/r<N>/` 的 NCU +
    5 类静态产物，commit "re-architecture: <新架构> (initial)"，然后由 Step 6 的
@@ -665,18 +683,18 @@ Triton 不在候选集。无论哪条路径都必须 FROM SCRATCH（不复制/�
 ## Step 6: 分析新 Kernel + 模块分解
 
 > **执行者：master spawn `analysis`。** 初版 = round 1 = v1，其分析落 `rounds/r1/`。
-> code1 已在 Step 5 生成 `rounds/r1/` 的 NCU + 5 类静态产物；analysis 读取这些产物
-> 做对比+模块分解，写 `decomposition.md`/`global-strategy.md` 与
-> **首个迭代轮** `rounds/r2/direction.md`（round 2 起进内循环）；master 据其 return 更新
-> `module-tracker.json` 后进入 Step 7 内循环。
+> code1 已在 Step 5 生成 `rounds/r1/` 的 NCU + 5 类静态产物 + `correctness-pass.txt`；
+> analysis 读取这些产物做对比+模块分解，写 **`rounds/r1/analysis.md`** +
+> `decomposition.md`/`global-strategy.md` 与 **首个迭代轮** `rounds/r2/direction.md`
+> （round 2 起进内循环）；master 据其 return 更新 `module-tracker.json` 后进入 Step 7 内循环。
 
 ### 6a. 产物完整性检查
 
 确认 `.rlcr/current/rounds/r1/` 已包含：
 `candidate.ncu-rep`、`candidate-details.txt`、`candidate-metrics.csv`、`candidate.ptx`、
 `candidate.cubin`、`candidate-sass.txt`、`candidate-res-usage.txt`、
-`candidate-nvdisasm.txt`。若缺任何一项，先回到 Step 5/code1 补齐，不得用
-`.rlcr/current/profiles/initial.*` 另起一套平行产物。
+`candidate-nvdisasm.txt`、`correctness-pass.txt`。若缺任何一项，先回到 Step 5/code1
+补齐，不得用 `.rlcr/current/profiles/initial.*` 另起一套平行产物。
 
 ### 6b. 对比分析 + 模块分解
 
@@ -688,10 +706,14 @@ Reduction 分解、共享资源识别、优化顺序）。
 3. 验证 MODULE 标记，用 NCU source-level 数据算每模块 runtime fraction
 4. 写 `.rlcr/current/decomposition.md`
 5. Gap analysis → 每模块瓶颈定位（NCU 证据 + SASS 证据）
-6. 全局优化策略 → 写 `.rlcr/current/global-strategy.md`
-7. 写**首个迭代轮**方向 `.rlcr/current/rounds/r2/direction.md`（round 1=初始 v1；首个
-   迭代轮 = round 2 → code2 产出 v2。在文档内标明本轮目标模块）
-8. 更新 `module-tracker.json`，git commit（只提交 `solution/` 代码与 `docs/`）
+6. **写 `.rlcr/current/rounds/r1/analysis.md`**（v1 的完整证据 + verdict + % roofline +
+   theory-vs-actual gap）。**不可省**：产物门槛要求「上一轮含 analysis.md」，缺它则
+   **round 2 第一次 Edit solution/ 会被 hook 拦**（r1 是 round 2 的上一轮）。
+7. 全局优化策略 → 写 `.rlcr/current/global-strategy.md`
+8. 写**首个迭代轮**方向 `.rlcr/current/rounds/r2/direction.md`（round 1=初始 v1；首个
+   迭代轮 = round 2 → code2 产出 v2。在文档内标明本轮目标模块；**顶部放「铁律提醒」抬头**，
+   见 Step 7c）
+9. 更新 `module-tracker.json`，git commit（只提交 `solution/` 代码与 `docs/`）
 
 ---
 
@@ -711,6 +733,7 @@ Reduction 分解、共享资源识别、优化顺序）。
 
 **每轮一个目录（本地，不 commit）**：本轮全部产物放进 `.rlcr/current/rounds/r<N>/`：
 - 文档：`direction.md`、`summary.md`、`analysis.md`
+- 正确性标记：`correctness-pass.txt`（benchmark.py `--round-dir` 全过时落）
 - profile / 静态分析：`candidate.ptx`、`candidate-sass.txt`、`candidate.cubin`、
   `candidate-res-usage.txt`、`candidate-nvdisasm.txt`、`candidate.ncu-rep`、
   `candidate-details.txt`、`candidate-metrics.csv`
@@ -752,8 +775,10 @@ Reduction 分解、共享资源识别、优化顺序）。
    - MODULE 外的改动：**每一处都必须能由 analysis 在 rounds/r<N>/summary.md 中说明因果关系**
      （"改了 X 是因为模块内改了 Y，导致 Z 接口不兼容"）。无法说明因果关系的外部改动
      → 撤销那处 Edit
-   - `python bench/benchmark.py --correctness-only` — 正确性必须通过（**这一步是
-     gate：错的代码不能进入 profile/benchmark**）
+   - `python bench/benchmark.py --correctness-only --round-dir .rlcr/current/rounds/r<N>`
+     — 正确性必须通过（**这一步是 gate：错的代码不能进入 profile/benchmark**）。全过时
+     落 `rounds/r<N>/correctness-pass.txt`（机械门槛产物，下一轮 Edit 前置；**不可手动
+     touch**）；失败则不写/清除旧标记。
    - `python bench/benchmark.py` — 仅作**粗筛 sanity**（量级是否合理、有没有跑飞），
      **不在此处下"快了/慢了"的结论**。wall-clock 含 dispatch/包装层开销，不作性能
      判据（铁律 -0.5）。
@@ -858,6 +883,20 @@ nvdisasm  -gi -sf     $RD/candidate.cubin > $RD/candidate-nvdisasm.txt
 | **MODULE_COMPLETE** | 结束此模块，进入 Integration |
 | **MODULE_STALLED** | 本模块持续无进展 → 转下一模块（不是停止；之后可回来再试） |
 | **STRATEGY_REVISION_NEEDED** | 重新分析瓶颈，更新 `global-strategy.md` 和模块顺序 |
+
+> **写 `direction.md` 的两条硬规矩（analysis 执行）**：
+> 1. **顶部放固定「铁律提醒」抬头**（抗压缩，#2）：code2 是长寿续用实例、context 会被
+>    压缩，而**没有 SessionStart hook 替子 agent 重注铁律**；它每轮被 hook 逼着读这份
+>    direction.md，所以抬头是给它重注全局铁律的最可靠渠道。逐字置于文件最前：
+>    ```
+>    > 铁律提醒(每轮重注,抗压缩):FROM SCRATCH 不接现成实现 | 性能只认 NCU
+>    > gpu__time_duration | 一轮一 lever、退化不回退 | 目标=90% roofline 上限
+>    > (非「打平 baseline」) | correctness 必须全过才落 correctness-pass.txt,不伪造。
+>    ```
+> 2. **写完别回读（#6 不变式）**：`.direction-read-marker` 是**全局单文件**、谁 Read
+>    当前 direction 都会刷新它。所以**活跃轮的 direction.md 只由 code2 读**；master 与
+>    analysis 写完/给路径即可，**不要再 Read 它**——否则会让 code2「漏读也能 Edit」，
+>    架空「先读方向」门槛。
 
 ### 停止条件
 

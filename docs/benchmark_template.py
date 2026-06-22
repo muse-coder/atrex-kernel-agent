@@ -397,6 +397,14 @@ def _run_one_workload(workload: dict[str, Any], args: argparse.Namespace) -> dic
         "status": "PASSED",
         "production": bool(workload.get("production", True)),
         "workload": workload,
+        # correctness was validated every trial above (early-return on failure),
+        # so a PASSED result is also correct; record the last trial's residuals
+        # so the correctness marker carries real numbers even on a timed run.
+        "correctness": {
+            "ok": True,
+            "max_abs": correctness.get("max_abs"),
+            "max_rel": correctness.get("max_rel"),
+        },
         "baseline": _stats_dict(baseline),
         "candidate": _stats_dict(candidate),
         "baseline_wall_us": baseline_wall_samples,
@@ -512,6 +520,51 @@ def _headline(results: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _write_correctness_marker(
+    round_dir: Path,
+    results: list[dict[str, Any]],
+    summary: dict[str, Any],
+) -> None:
+    """机械正确性门槛产物。
+
+    仅当**本次所有 workload 都正确**（passed == total）时，往
+    ``<round_dir>/correctness-pass.txt`` 落一个 PASS 标记——IterKernel 的
+    ``block_solution_rewrite.py`` 把它列为「下一轮 Edit solution/」的前置产物，
+    于是「kernel 没跑对就不能进入下一轮」从约定变成机械门槛。
+
+    任何失败/超时/报错都**不写**该标记，并清掉可能残留的旧标记，避免一个过期的
+    PASS 文件继续满足门槛（错的代码不能借上一轮的标记蒙混过关）。
+    """
+    marker = round_dir / "correctness-pass.txt"
+    total = int(summary.get("total", 0) or 0)
+    all_ok = total > 0 and summary.get("passed") == total
+    if not all_ok:
+        try:
+            marker.unlink()
+        except OSError:
+            pass
+        return
+    try:
+        round_dir.mkdir(parents=True, exist_ok=True)
+        lines = [
+            "IterKernel correctness gate: PASS",
+            f"time: {time.strftime('%Y-%m-%d %H:%M:%S')}",
+            f"command: {' '.join(sys.argv)}",
+            f"workloads: {summary.get('passed')}/{total} correct",
+            "",
+        ]
+        for r in results:
+            c = r.get("correctness") or {}
+            lines.append(
+                f"  {r.get('id')}: {r.get('status')} "
+                f"max_abs={c.get('max_abs', 'n/a')} max_rel={c.get('max_rel', 'n/a')}"
+            )
+        marker.write_text("\n".join(lines) + "\n")
+        print(f"correctness marker written: {marker}", flush=True)
+    except OSError as exc:
+        print(f"WARNING: could not write correctness marker: {exc}", flush=True)
+
+
 def _load_workloads(path: Path, only: list[str] | None) -> list[dict[str, Any]]:
     data = json.loads(path.read_text())
     if not isinstance(data, list):
@@ -529,6 +582,14 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--workloads", type=Path, default=DEFAULT_WORKLOADS)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument(
+        "--round-dir",
+        type=Path,
+        default=None,
+        help="本轮目录（如 .rlcr/current/rounds/r7）。给定时，所有 workload 全过会在"
+        " 此目录写 correctness-pass.txt（IterKernel 产物门槛要求的正确性标记）；任何"
+        " 失败则清除旧标记。",
+    )
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--only", nargs="*", help="run only workload ids listed here")
     parser.add_argument("--seed", type=int, default=1234)
@@ -591,6 +652,9 @@ def main() -> int:
             "nvidia_smi_after": _nvidia_smi(),
         }
         f.write(json.dumps(summary) + "\n")
+
+    if args.round_dir is not None:
+        _write_correctness_marker(args.round_dir, results, summary)
 
     print(json.dumps(summary, indent=2))
     return 0 if summary["passed"] == summary["total"] else 1

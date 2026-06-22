@@ -63,9 +63,10 @@ ROUND_ARTIFACTS = [
     "candidate.ptx", "candidate.cubin", "candidate-sass.txt",
     "candidate-res-usage.txt", "candidate-nvdisasm.txt",
     "candidate.ncu-rep", "candidate-details.txt", "candidate-metrics.csv",
+    "correctness-pass.txt",
 ]
 GATE_ARTIFACTS = [
-    "analysis.md",
+    "analysis.md", "correctness-pass.txt",
     "candidate.ptx", "candidate.cubin", "candidate-sass.txt",
     "candidate-res-usage.txt", "candidate-nvdisasm.txt",
     "candidate.ncu-rep", "candidate-details.txt", "candidate-metrics.csv",

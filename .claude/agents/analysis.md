@@ -32,8 +32,10 @@ caller 还会告诉你**本轮轮号 N**、目标 module、以及这是「每轮
 
 ## 先读（从磁盘，不从 prompt）
 
-1. `AGENT_REPO/.claude/commands/optimize-kernel.md` 的 **Step 4a/4b/4c、Step 7c**
-   —— 你执行的就是这几步的分析纪律(尤其 7c「调度层 SASS 分析」)。
+1. `AGENT_REPO/.claude/commands/optimize-kernel.md` 的 **「全局铁律」节 + Step 4a/4b/4c、
+   Step 7c** —— 「全局铁律」**每轮都要重读**(你可能是长寿续用实例、context 已被压缩,
+   而没有 SessionStart hook 替子 agent 重注铁律,得你自己读回 FROM SCRATCH / NCU 权威 /
+   90% roofline 这套判据);后面几步是你执行的分析纪律(尤其 7c「调度层 SASS 分析」)。
 2. `AGENT_REPO/docs/kernel_optimization_lessons.md` —— 历史教训(fragment layout、
    swizzle、SM 能力、自欺陷阱)。
 3. `AGENT_REPO/external/ncu-report-skill/SKILL.md` —— NCU 方法论。
@@ -102,6 +104,14 @@ caller 还会告诉你**本轮轮号 N**、目标 module、以及这是「每轮
 「当前优化路线还有没有空间」由你**给出带证据的建议**，最终丢弃/重定总纲的扳机
 **归 master 扣**(提方向的人不判自己方向死活,避免确认偏差)。
 
+> **#4 fresh 自检(关键反自欺护栏)**:枯竭/pivot 诊断**必须由 fresh 实例**(无前几轮记忆)
+> 做——这是全流程最怕「舍不得自己主意」的决策点。**若你发现自己带着前几轮的连续记忆
+> (你是被 SendMessage 续用的 routine 实例),却被要求判「这条路线死没死/要不要换架构」**,
+> 这是 master 用错了实例:**在 return 里明确提醒 master「pivot 诊断应另起 fresh analysis
+> 实例(新 Agent 调用,非 SendMessage 续用),我是带记忆的 routine 实例,不宜做此判定」**,
+> 并仍按磁盘证据(summary.md + 各轮 analysis.md)给出最克制的初步看法,但把 fresh 复核的
+> 必要性顶在最前。没有任何 hook 能替你识别这点——靠你自报。
+
 宣布「接近枯竭」的**硬证据门槛**(缺一不可,照 lessons「switch-when-exhausted」):
 1. **SASS 调度层证据**表明剩余瓶颈在本方向内**结构不可约**(如 NOP 是吞吐 stall 非
    依赖气泡 / 再加 warp 必 throttle / 更多累加器必 spill)；
@@ -122,6 +132,17 @@ caller 还会告诉你**本轮轮号 N**、目标 module、以及这是「每轮
 2. `rounds/r<N+1>/direction.md`(verdict=CONTINUE 时)—— **给 code2 的精细方向**，
    必须具体到「点名 MODULE/函数/tile/常量/PTX 指令 + 预期 metric delta」，禁止
    「改善内存访问」这种空话。本轮目标 module 写进文档内容。
+   - **顶部必须放一段固定「铁律提醒」抬头**(抗压缩,#2):code2 是长寿续用实例,它每轮被
+     hook 逼着读这份 direction.md,所以这是给它**重注全局铁律**的最可靠渠道。逐字放在文件
+     最前面:
+     ```
+     > 铁律提醒(每轮重注,抗压缩):FROM SCRATCH 不接现成实现 | 性能只认 NCU
+     > gpu__time_duration | 一轮一 lever、退化不回退 | 目标=90% roofline 上限
+     > (非「打平 baseline」) | correctness 必须全过才落 correctness-pass.txt,不伪造。
+     ```
+   - **#6 不变式**:这份 direction.md 写完后,**让 code2 去读,你(analysis)和 master 都
+     不要再 Read 它**——`.direction-read-marker` 是全局的,谁读都会刷新,你读了会让 code2
+     「漏读也能 Edit」,架空「先读方向」门槛。你只**写**,不回读。
 3. `summary.md` 追加/更新本轮一行：`r<N> | <改了什么> | NCU <µs> | <X>% roofline | <verdict>`。
 4. `kernel_optimization_lessons` 维护：发现某条 lesson 是死胡同/错误/让 agent 卡住，
    **prune 掉**(在 campaign 的 lessons 副本里标注或删除,并在 return 里告诉 master 同步全局)。

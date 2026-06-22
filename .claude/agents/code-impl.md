@@ -49,8 +49,9 @@ tools: Read, Grep, Glob, Bash, Write, Edit
 - **新文件命名：版本=全局轮号** `<family>_v<N>.<ext>`(C++ 路径 `.cu`,CuTe DSL 路径
   `.py`;首次实现 → `fp8_gemm_v1.cu`,round 8 re-arch → `fp8_gemm_v8.cu`)。`v` 的数字
   必须 = 轮号 N,文件名↔轮次单调对应(见命令文档「源文件版本命名」)。**绝不 Write 覆盖
-  已存在的源文件**(防重写 hook 拦覆盖、放行新文件)。首次实现按流程创建渐进锁；
-  re-arch 时**不要** `rm`/`touch` 那个渐进锁。
+  已存在的源文件**——这是**纪律要求**,hook 已**不再机械拦截**覆盖(防重写段已移除),靠
+  自律守住:每次只 Write 一个**新轮号文件**。首次实现按流程创建渐进锁；re-arch 时
+  **不要** `rm`/`touch` 那个渐进锁(它仍是「先读方向 / 完整产物」两道门槛的触发器)。
 - **MODULE 标记**：插入 `// MODULE: <id> BEGIN/END`,与总纲的 MODULE 分解一致。
 
 ## 流程
@@ -59,14 +60,18 @@ tools: Read, Grep, Glob, Bash, Write, Edit
    tile-swizzle/stream-K 等**该上的一次上齐**,不留「简单版先跑通」的天花板)。
 2. **Write** 新源文件 `solution/<family>_v<N>.<ext>`(从零;首次实现即 `_v1`)。
 3. 写/更新 benchmark adapter(对称 ABI,destination-passing,无单边开销)。
-4. `python bench/benchmark.py --correctness-only` —— 正确性必须**全过**(poison+oracle)。
+4. `python bench/benchmark.py --correctness-only --round-dir .rlcr/current/rounds/r<N>`
+   —— 正确性必须**全过**(poison+oracle)。全过时 benchmark.py 会在该轮目录落
+   `correctness-pass.txt`(**机械正确性门槛产物**:下一轮 Edit 前 hook 检查上一轮有它;
+   缺=上一轮 kernel 未证明正确,拦)。**不要手动 touch 它**——必须真跑通才落(不伪造 evidence)。
    不过就按错误恢复流程小步 Edit 修(只改报错相关行,**不整文件重写**),最多连续 3 次
    修不好再 `git checkout` 回退缩小目标。
 5. `python bench/benchmark.py` —— 记录(仅 sanity,不下性能结论)。
 6. **生成本轮 NCU + 5 类静态产物**到 `CAMPAIGN_DIR/.rlcr/current/rounds/r<N>/`(给
    analysis 读)。下面是 **C++ 路径(纯 CUDA+PTX / CUTLASS)** 的命令；**CuTe DSL(.py)
    路径**改用 `config.toml` 声明的 build/profile 命令(JIT 后 dump cubin),再用同样的
-   `cuobjdump`/`nvdisasm` 取 SASS——5 类产物与 NCU 一个都不能少:
+   `cuobjdump`/`nvdisasm` 取 SASS——5 类产物 + NCU + 步骤 4 的 `correctness-pass.txt`
+   一个都不能少:
    ```bash
    RD=.rlcr/current/rounds/r<N>; mkdir -p $RD
    # NCU(命令遵循 ncu-report-skill;-k regex 锁本 kernel)
@@ -81,8 +86,8 @@ tools: Read, Grep, Glob, Bash, Write, Edit
    cuobjdump -res-usage $RD/candidate.cubin > $RD/candidate-res-usage.txt
    nvdisasm  -gi -sf    $RD/candidate.cubin > $RD/candidate-nvdisasm.txt
    ```
-7. **首次实现专属**：`touch .rlcr/current/.initial-impl-done`(激活渐进锁——此后
-   code-iter 只能 Edit)。re-arch 时锁已存在,**保持上锁,不要动它**(写新文件本就放行)。
+7. **首次实现专属**：`touch .rlcr/current/.initial-impl-done`(激活「先读方向 / 完整
+   产物」两道门槛)。re-arch 时锁已存在,**保持上锁,不要动它**(摘了这两道门槛会静默失效)。
 8. 把 candidate ABI / adapter 切到新文件。re-arch 时**保留旧文件供 analysis 对比**,
    待新版经 NCU 确认更快后由 master/finalize 决定 `git rm` 旧文件。
 9. git commit(提交 `solution/` 与必要的 `bench/` adapter / profile runner；`.rlcr/`

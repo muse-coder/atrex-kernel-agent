@@ -14,12 +14,12 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Write|Edit|MultiEdit|Bash",
+        "matcher": "Write|Edit|MultiEdit",
         "hooks": [
           {
             "type": "command",
             "command": "python3 \"${CLAUDE_PROJECT_DIR}/.claude/hooks/block_solution_rewrite.py\" pre",
-            "statusMessage": "IterKernel solution guard (rewrite + direction-read + artifacts)",
+            "statusMessage": "IterKernel solution guard (direction-read + artifacts)",
             "timeout": 10
           }
         ]

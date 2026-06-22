@@ -1,28 +1,33 @@
 #!/usr/bin/env python3
 """IterKernel solution/ 守卫（PreToolUse + PostToolUse hook）。
 
-三类抗压缩保障，以磁盘上的状态为依据，因此能在任何 context 摘要后存活
+两类抗压缩保障，以磁盘上的状态为依据，因此能在任何 context 摘要后存活
 （模型的记忆无关紧要——它们在每次工具调用时作为独立进程运行）：
 
-1. 防重写（means 层）。一旦某个 campaign 的
-   ``<root>/.rlcr/current/.initial-impl-done`` 标记存在，``solution/``
-   文件就只能通过增量 ``Edit`` 修改。整体 ``Write`` 以及 shell 覆盖
-   （往 solution/ 里 ``>`` ``>>`` ``tee`` ``sed -i`` ``truncate`` ``dd``）
-   一律拒绝。
+注：**防重写不再由本 hook 机械强制**（原先拦 ``Write`` 覆盖 + shell 重写的那一段
+已移除）。改为靠 code2 无 ``Write`` 工具 + ``cp v<N-1>→v<N>`` 版本文件模型 +
+analysis 的「一 lever diff」人工核对来自律。本 hook 只保留下面两道依赖
+``.initial-impl-done`` 锁的 process 门槛。
 
-2. 方向已读门槛（process 层）。在迭代阶段（标记存在时），对已锁定的
-   ``solution/`` 做 ``Edit`` 会被拒绝，除非*当前*轮的方向文件
-   （``.rlcr/current/modules/`` 下最新的 ``round-*-direction.md``，否则
+1. 方向已读门槛（process 层）。在迭代阶段（``.initial-impl-done`` 标记存在时），
+   对已锁定的 ``solution/`` 做 ``Edit`` 会被拒绝，除非*当前*轮的方向文件
+   （``.rlcr/current/rounds/r<N>/direction.md`` 最新者，否则
    ``.rlcr/current/direction.md``）自其上次写入后已被读过。读它（PostToolUse）
    会刷新 ``.rlcr/current/.direction-read-marker``。
 
-3. 完整产物门槛（process 层）。在第 N 轮（N>=2）对已锁定的 ``solution/`` 做
+   ⚠️ 已知局限（#6）：``.direction-read-marker`` 是**全局单文件**，PostToolUse 拿不到
+   「是哪个 subagent 读的」，所以**任何** agent（master/analysis）Read 当前 direction
+   都会刷新它，从而让 code2「漏读也能 Edit」。hook 层无法归因 reader 身份；因此靠**契约
+   不变式**补强：**活跃轮的 direction.md 只由 code2 读，master/analysis 只写不回读**
+   （见 optimize-kernel.md Step 7c、analysis.md、code-iter.md）。code2 仍被要求每轮亲自读。
+
+2. 完整产物门槛（process 层）。在第 N 轮（N>=2）对已锁定的 ``solution/`` 做
    ``Edit`` 会被拒绝，直到上一轮生成了完整 NCU、5 类静态产物和 ``analysis.md``。
    强制执行「每轮都要做 profile/静态分析/诊断，否则不进入下一轮代码修改」。
    第 1 轮永不设门槛。
 
 调用方式：
-  pre  → handle_pre_tool_use   (matcher: Write|Edit|MultiEdit|Bash)
+  pre  → handle_pre_tool_use   (matcher: Write|Edit|MultiEdit)
   post → handle_post_tool_use  (matcher: Read)
 
 决策协议：deny == 在 stdout 打印 PreToolUse ``permissionDecision: deny`` JSON，
@@ -40,14 +45,6 @@ from pathlib import Path
 MARKER_REL = (".rlcr", "current", ".initial-impl-done")
 DIRECTION_READ_MARKER_REL = (".rlcr", "current", ".direction-read-marker")
 
-REWRITE_REASON = (
-    "🔒 渐进式修改锁已激活（{root}/.rlcr/current/.initial-impl-done 存在）。"
-    "禁止用 Write 覆盖**已存在**的 solution/ 文件（既定架构内只能用 Edit 增量修改）。"
-    "若要回退请用 `git checkout HEAD -- solution/`，再用小步 Edit 重试。"
-    "（注：re-architecture 写**新文件**是放行的——直接 Write 新的轮次编号源文件即可，"
-    "无需也不要 `rm` 这个锁。）"
-)
-
 DIRECTION_REASON = (
     "📖 本轮优化方向尚未阅读。编辑 solution/ 前必须先 Read 当前轮的方向文件："
     "{path}。读完它再做增量 Edit（即使 context 被压缩也不能跳过这一步）。"
@@ -64,6 +61,7 @@ REQUIRED_PREV_ROUND_ARTIFACTS = [
     "candidate.ncu-rep",
     "candidate-details.txt",
     "candidate-metrics.csv",
+    "correctness-pass.txt",  # benchmark.py 仅在全部 workload 正确时落；缺=上一轮 kernel 未证明正确
     "analysis.md",
 ]
 ROUND_ARTIFACTS_REASON = (
@@ -99,7 +97,8 @@ def emit_warn(msg: str) -> None:
 UNLOCKED_WARN = (
     "⚠️ 渐进式修改锁缺失：{root}/.rlcr/current/.initial-impl-done 不存在,但该 "
     "campaign 已进入迭代(存在 rounds/r<N>/)。说明锁在某次 re-arch 摘掉后没补回来,"
-    "防重写 / 先读 direction / 完整产物硬门槛**当前全部失效**。请立刻 "
+    "先读 direction / 完整产物硬门槛**当前全部失效**(防重写本就靠 code2 无 Write + "
+    "cp 模型自律,不依赖锁)。请立刻 "
     "`touch {root}/.rlcr/current/.initial-impl-done` 恢复纪律,再继续改 solution/。"
 )
 
@@ -176,30 +175,6 @@ def current_direction_file(root: Path) -> Path | None:
             return candidates[0]
     fallback = cur / "direction.md"
     return fallback if fallback.exists() else None
-
-
-# --- shell 覆盖检测 -------------------------------------------------------------
-_REDIRECT_RE = re.compile(r"""\d*>>?\s*("[^"]*"|'[^']*'|[^\s;|&)]+)""")
-_SED_INPLACE_RE = re.compile(r"\bsed\b[^|;&]*-i")
-_TEE_RE = re.compile(r"\btee\b")
-_TRUNC_RE = re.compile(r"\b(?:truncate|dd)\b")
-
-
-def _tokens(command: str) -> list[str]:
-    return re.findall(r"""(?:"[^"]*"|'[^']*'|[^\s;|&]+)""", command)
-
-
-def bash_overwrite_root(command: str, cwd: str | None) -> Path | None:
-    if not command or "solution" not in command:
-        return None
-    candidates: list[str] = [m.group(1) for m in _REDIRECT_RE.finditer(command)]
-    if _SED_INPLACE_RE.search(command) or _TEE_RE.search(command) or _TRUNC_RE.search(command):
-        candidates.extend(_tokens(command))
-    for cand in candidates:
-        root = locked_campaign_root(cand, cwd)
-        if root is not None:
-            return root
-    return None
 
 
 # --- 方向已读门槛 --------------------------------------------------------------
@@ -287,25 +262,15 @@ def handle_pre_tool_use(payload: dict) -> int:
     cwd = payload.get("cwd")
 
     if tool == "write":
+        # 防重写已不再由本 hook 强制：Write 一律放行（靠 code2 无 Write 工具 +
+        # cp v<N-1>→v<N> 版本文件模型 + analysis 的一-lever diff 人工核对自律）。
+        # 仅在锁缺失但已进入迭代时给一条非阻塞提醒——先读方向 / 完整产物两道门槛
+        # 依赖该锁。
         fp = tool_input.get("file_path", "")
-        root = locked_campaign_root(fp, cwd)
-        if root is not None:
-            # 允许创建一个新文件（re-architecture 会写一个以轮次编号命名的新
-            # 源文件）——这里没有什么可「重写」的。只阻止覆盖一个已存在的
-            # solution 文件（即锁所要防范的偷懒整文件重写）。这样就无需为
-            # re-arch 去 `rm` 这个锁。
-            if resolve_path(fp, cwd).exists():
-                return emit_deny(REWRITE_REASON.format(root=root))
-            return 0
-        # 未锁定状态的安全网
         wroot = campaign_root_for_solution(fp, cwd)
         if wroot is not None and unlocked_but_iterating(wroot):
             emit_warn(UNLOCKED_WARN.format(root=wroot))
         return 0
-
-    if "bash" in tool:
-        root = bash_overwrite_root(tool_input.get("command", ""), cwd)
-        return emit_deny(REWRITE_REASON.format(root=root)) if root else 0
 
     if "edit" in tool:  # Edit / MultiEdit
         fp = tool_input.get("file_path", "")
