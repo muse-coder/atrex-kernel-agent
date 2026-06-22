@@ -28,7 +28,7 @@ artifact 交接（不在 prompt 里塞尝试历史）**。**不用 Workflow**—
 
 **双循环**：内循环 `code2↔analysis`（master 不插手，反应式）；analysis 报枯竭才上浮到
 外循环由 master 判丢弃/re-arch。现有所有硬纪律（FROM SCRATCH / 防重写 / NCU 权威 /
-SASS 门槛 / 90% roofline）不变，只是分摊到各角色；hook 按 cwd+file_path 校验，子 agent
+完整产物门槛 / 90% roofline）不变，只是分摊到各角色；hook 按 cwd+file_path 校验，子 agent
 照常受约束。
 
 ## 实现约束（原语三选一，按算子复杂度评估后定）
@@ -125,11 +125,12 @@ docs/           — 结果、方法笔记
 编号 N**，每轮全部产物放进 `.rlcr/current/rounds/r<N>/`（本地，不 commit）：
 
 1. **实现前（7a）**：读 `rounds/r<N>/direction.md`（首轮需先写）；并把
-   `.rlcr/current/state.md` 设为 `当前轮: r<N>`（SASS 门槛 hook 据此判定上一轮）
+   `.rlcr/current/state.md` 设为 `当前轮: r<N>`（完整产物门槛 hook 据此判定上一轮）
 2. **实现后（7a）**：`git diff` 检查 MODULE 边界 + 防重写机械检查
 3. **验证（7a）**：`benchmark.py --correctness-only` 通过 + benchmark 记录（粗筛）
 4. **Profile（7b）**：NCU 实测 + PTX/SASS 静态分析（5 类静态产物每轮必生成），存 `rounds/r<N>/`
-5. **文档（7a）**：写 `rounds/r<N>/summary.md`（diff 统计 + 因果关系）
+5. **文档（7c）**：analysis 从版本间 diff / git diff 重建并写 `rounds/r<N>/summary.md`
+   （diff 统计 + 因果关系）
 6. **分析（7c）**：写 `rounds/r<N>/analysis.md`（NCU 数值 + SASS 证据 + verdict；进退一律以 NCU 判）
 7. **状态（7c）**：更新 `state.md`（当前轮号 / verdict / 最新 NCU duration / 下一步 direction）——抗压缩恢复依赖它
 8. **方向（7c）**：写 `rounds/r<N+1>/direction.md`（或标记模块完成）

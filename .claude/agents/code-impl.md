@@ -49,7 +49,8 @@ tools: Read, Grep, Glob, Bash, Write, Edit
 - **新文件命名：版本=全局轮号** `<family>_v<N>.<ext>`(C++ 路径 `.cu`,CuTe DSL 路径
   `.py`;首次实现 → `fp8_gemm_v1.cu`,round 8 re-arch → `fp8_gemm_v8.cu`)。`v` 的数字
   必须 = 轮号 N,文件名↔轮次单调对应(见命令文档「源文件版本命名」)。**绝不 Write 覆盖
-  已存在的源文件**(防重写 hook 拦覆盖、放行新文件)。**不要** `rm`/`touch` 那个渐进锁。
+  已存在的源文件**(防重写 hook 拦覆盖、放行新文件)。首次实现按流程创建渐进锁；
+  re-arch 时**不要** `rm`/`touch` 那个渐进锁。
 - **MODULE 标记**：插入 `// MODULE: <id> BEGIN/END`,与总纲的 MODULE 分解一致。
 
 ## 流程
@@ -84,14 +85,15 @@ tools: Read, Grep, Glob, Bash, Write, Edit
    code-iter 只能 Edit)。re-arch 时锁已存在,**保持上锁,不要动它**(写新文件本就放行)。
 8. 把 candidate ABI / adapter 切到新文件。re-arch 时**保留旧文件供 analysis 对比**,
    待新版经 NCU 确认更快后由 master/finalize 决定 `git rm` 旧文件。
-9. git commit(只提交 `solution/`):首次 `initial kernel implementation`;
-   re-arch `re-architecture: <新架构> (initial)`。
+9. git commit(提交 `solution/` 与必要的 `bench/` adapter / profile runner；`.rlcr/`
+   不提交):首次 `initial kernel implementation`; re-arch `re-architecture: <新架构> (initial)`。
 
 ## 绝不做
 
 - ❌ 以任何已有 kernel 为起点继续改。
 - ❌ Write 覆盖已存在源文件 / `rm` 渐进锁。
-- ❌ 引入 CUTLASS Collective/Builder/GemmUniversal/CuTe。
+- ❌ 违反 master 选定的原语边界；仅当本次选择是**纯 CUDA+PTX**路径时，才禁止引入
+  CUTLASS Collective/Builder/GemmUniversal/CuTe。
 - ❌ 渐进微调(交给 code-iter)。
 
 ## return 给 master（≤120 词）

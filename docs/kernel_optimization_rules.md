@@ -5,29 +5,33 @@
 
 ## 实现语言与抽象层级
 
-优化后的 kernel（solution/）必须用 **CUDA C++** 编写。candidate 实现不得使用
-Triton 或任何其他高层 kernel DSL。
+candidate **不固定为 CUDA C++**。master 必须先按算子复杂度、所需控制力和达到
+≥90% roofline 的实现成本，在 `.claude/commands/optimize-kernel.md` Step 4d-0
+规定的三种原语里选一个，并把选择与 build/profile 命令写进 `config.toml`：
 
-优先使用 CUDA 中最原始的控制构造：
-
-- **PTX inline assembly**（`asm volatile`）用于硬件特定操作：
+- **纯 CUDA + PTX 薄封装**：适合结构简单到中等、需要指令级调度控制、或不贴合标准
+  模板的算子。此路径中使用 CUDA C++ + PTX inline assembly（`asm volatile`）表达
   `cp.async.bulk`（TMA）、`wgmma.mma_async` / `tcgen05.mma`、`mbarrier`、
-  `fence.proxy.async`、`setmaxnreg`、named barriers（`bar.sync`）等。
-- **薄封装（thin wrappers）** over PTX 是可以接受的——一个 inline 函数对应一条
-  PTX 指令，无状态、无抽象。DeepGEMM 风格，而非 CUTLASS 风格。
-- **禁止使用** CUTLASS 的 Collective/Builder/Pipeline 抽象、`GemmUniversal*`
-  以及 CuTe layout 代数。**唯一允许**的 CUTLASS 头文件是 `cutlass/numeric_types.h`
-  （仅用于 dtype 定义）。**权威禁止清单以 `.claude/commands/optimize-kernel.md`
-  Step 5「代码约束」为准**——本文件与其冲突时以该命令文档为准。注意这与 baseline
-  无关：baseline 可以是任意现成库实现（见下），约束只针对你从零实现的 candidate。
+  `fence.proxy.async`、`setmaxnreg`、named barriers（`bar.sync`）等硬件操作。
+  薄封装（thin wrappers）可以接受：一个 inline 函数对应一条 PTX 指令，无状态、无抽象，
+  DeepGEMM 风格。**仅在此路径内**禁止混入 CUTLASS Collective/Builder/Pipeline、
+  `GemmUniversal*` 以及 CuTe layout 代数；`cutlass/numeric_types.h` 仅作 dtype 定义可用。
+- **CUTLASS**：适合标准/近标准 GEMM、conv、attention 等，允许使用 Collective/Builder、
+  epilogue fusion、CuTe layout 代数等构件，但必须自己组装本任务的 kernel，不复制旧
+  campaign 或库里的现成 kernel 文件。
+- **CuTe DSL**：适合需要 CUTLASS 级 layout/copy/MMA/pipeline 抽象，同时希望更灵活
+  fusion 或更快迭代的场景。源文件为 `.py`，SASS/NCU 仍从 JIT 产物提取。
 
-为什么有此偏好：高度抽象的框架会让人更难推理硬件实际执行了什么。当每条 PTX
-指令都在源码中可见时，分析者可以把 NCU metric 对应到具体代码，编码者也可以做
-有针对性的修改。candidate 的核心交付价值正是这种「指令级可见、可归因」的实现，
-所以即使某些功能（复杂 epilogue fusion、多阶段 pipeline 编排、高级 layout 变换）
-从零写更费劲，也必须自己用 PTX 薄封装实现，而不是退回到 CUTLASS/CuTe 模板。
+Triton 不在 candidate 候选集。无论选哪个原语，都必须 FROM SCRATCH、每轮生成 NCU +
+静态产物、按渐进版本文件模型迭代。**权威清单以 `.claude/commands/optimize-kernel.md`
+Step 4d-0 与 Step 5「代码约束」为准**；本文件与其冲突时以该命令文档为准。
 
-推荐（薄封装）：
+为什么默认偏好纯 CUDA+PTX：高度抽象的框架会让人更难推理硬件实际执行了什么。当每条
+PTX 指令都在源码中可见时，分析者可以把 NCU metric 对应到具体代码，编码者也可以做
+有针对性的修改。但当标准构件能更可靠地逼近结构上限时，CUTLASS 或 CuTe DSL 是允许的
+候选原语。
+
+纯 CUDA+PTX 路径推荐（薄封装）：
 ```cuda
 __device__ void tma_load(void* smem, uint64_t* mbar, ...) {
     asm volatile("cp.async.bulk.tensor.2d.shared::cluster.global.mbarrier..."
@@ -35,7 +39,7 @@ __device__ void tma_load(void* smem, uint64_t* mbar, ...) {
 }
 ```
 
-baseline 可以使用任意实现（FlashInfer、CUTLASS、Triton）用于对比。
+baseline 可以使用任意现成库实现（例如 FlashInfer、CUTLASS 或 PyTorch/cuBLAS）用于对比。
 
 ## Baseline 与 Candidate 配对
 
@@ -60,7 +64,7 @@ baseline——JIT 有运行时编译开销，不能代表生产性能。构建�
 用相同的本地注册/导出/构建方式。不要把 baseline 通过一个 wrapper 暴露，而把
 candidate 通过一条更轻的直连路径暴露。
 
-如果 baseline 实现是 Triton、CuTe DSL 或 Python，把它保持在 `baseline/` 内，并
+如果 baseline 实现是 CuTe DSL 或 Python，把它保持在 `baseline/` 内，并
 构建一个本地 adapter，使其与 candidate adapter 具有相同的调用签名、参数顺序、
 stream 行为和输出分配策略。
 

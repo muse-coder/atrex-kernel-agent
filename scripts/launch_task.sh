@@ -198,8 +198,9 @@ Claude Code，用一条命令启动优化:
 
   /optimize-kernel <根据下面的 Source Prompt 描述这个 kernel>
 
-该命令会内联运行整个流程（无 Workflow、无 subagent），并在 /tmp/<slug>/
-下创建本 campaign 独立的 git repo。完整步骤列表见
+该命令会由当前会话里的 master agent 编排（无 Workflow；通过 Agent 工具 spawn
+analysis / code-impl / code-iter subagent），并在 /tmp/<slug>/ 下创建本 campaign
+独立的 git repo。完整步骤列表见
 .claude/commands/optimize-kernel.md。
 
 ## Source Prompt

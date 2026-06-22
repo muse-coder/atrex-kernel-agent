@@ -26,7 +26,7 @@
   不变式 = summary.md + 每轮 analysis.md 自足到能重建轨迹("fresh 靠读不靠记")。
 - **抗压缩**：只有 master 长命会压缩 → SessionStart hook 重注入 + 重读磁盘恢复；**先落盘
   后 return**，return 丢了也能恢复 verdict。
-- **不变**：所有硬铁律(FROM SCRATCH / 防重写 / NCU 权威 / SASS 门槛 / 90% roofline)
+- **不变**：所有硬铁律(FROM SCRATCH / 防重写 / NCU 权威 / 完整产物门槛 / 90% roofline)
   原样保留，只是分摊到各角色，hook 按 cwd+file_path 校验子 agent 照拦。
 
 详见下文分节与图 A–E。
@@ -83,7 +83,7 @@ master 的循环，是 Agent 工具的正命，不是 Workflow 的并行批处�
          │  hook 读磁盘状态机械强制门槛(与 agent 身份无关,子agent照拦):
          │   · 防重写: 覆盖已存在 solution/ → deny ; 新文件(cp/Write) → 放行
          │   · 先读方向: 编辑前没读 rN/direction.md → deny
-         │   · SASS门槛: r(N-1)/candidate-sass.txt 缺 → deny rN 编辑
+         │   · 完整产物门槛: r(N-1) 缺 NCU/静态产物/analysis.md → deny rN 编辑
          └── subagent 之间从不直接通信;一切配对 = "读对方写的文档"
 ```
 
@@ -134,7 +134,7 @@ master 的循环，是 Agent 工具的正命，不是 Workflow 的并行批处�
    ├──────────────────────────────────────────────────────────────▶│
    │                    cp <family>_v<N-1> → <family>_v<N>          │ (Bash,新文件,hook放行)
    │                    Read rN/direction.md  ◀─────────────────────┤ (hook:先读方向✓)
-   │                    Edit v<N> 改一个 lever ◀────────────────────┤ (hook:防重写✓ SASS门槛查r(N-1)✓)
+   │                    Edit v<N> 改一个 lever ◀────────────────────┤ (hook:防重写✓ 完整产物门槛查r(N-1)✓)
    │                    adapter import → v<N>                       │
    │                    diff v<N-1> v<N> 自查(只一 lever)            │
    │                    correctness gate + 生成 rN/candidate.*       │
@@ -212,7 +212,7 @@ master 的循环，是 Agent 工具的正命，不是 Workflow 的并行批处�
     lever 的 Edit**。"渐进" = `diff v<N-1> v<N>` 只含一个 lever。
   - **code1 re-arch 轮 N**：直接 Write 全新 `_v<N>`（FROM SCRATCH）。
 - code2 **无 Write 工具**：`cp`+`Edit` 而非 Write——因为 Write 新文件会**绕过** hook 的
-  "先读方向"+SASS 门槛（只在 Edit 触发），cp 出 v<N> 再 Edit 则门槛照常生效。
+  "先读方向"+完整产物门槛（只在 Edit 触发），cp 出 v<N> 再 Edit 则门槛照常生效。
 - 全部 v1..vn 留在 `solution/`：跨轮直接 diff；finalize 按 NCU 选最优 vN。
 
 ## 9. 实现原语三选一（Step 4d-0，按算子复杂度评估）
@@ -240,7 +240,7 @@ pathology checklist、`summary.md` 滚动索引、living lessons（prune）、fo
 亚噪声用 paired 对比。
 
 **分叉（IterKernel 特有）**：
-- **测量**：auto-gpu-kernel 用 **CUPTI**（远程 Triton on Modal，NCU 不便、Triton 编译器
+- **测量**：auto-gpu-kernel 用 **CUPTI**（远程 DSL on Modal，NCU 不便、编译器
   不透明）；IterKernel 用 **NCU**（自控 GPU + CUDA/PTX，NCU 的 stall/roofline/source-
   counter 可行动）。NCU 为权威（铁律 -0.5），wall-clock 仅辅助。
 - **静态分析**：auto-gpu-kernel 不做 SASS（且禁止静态预测寄存器压力）；IterKernel **每轮

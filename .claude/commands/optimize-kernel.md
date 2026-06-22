@@ -58,14 +58,14 @@
    benchmark 选出（`git checkout <最优 commit> -- solution/`，见 Step 9）。
 5. **唯一的例外是正确性/编译失败**：错的代码不能 benchmark，必须修到能跑对
    （见"错误恢复流程"）。这是"修到正确"，不是"性能回退"。
-6. **SASS 分析硬门槛（gating，不可跳过）**：每一轮**必须**先完成 5 类静态产物
+6. **完整 profile/分析硬门槛（gating，不可跳过）**：每一轮**必须**先完成 5 类静态产物
    （`candidate.ptx/.cubin/candidate-sass.txt/candidate-res-usage.txt/
-   candidate-nvdisasm.txt`）+ NCU 实测，并写进 `rounds/r<N>/analysis.md`，
-   **才能开始下一轮的 solution/ 代码修改**。这由 hook
-   (`block_solution_rewrite.py` 的 SASS GATE) 机械强制：下一轮 Edit solution/ 时，
-   若上一轮 `rounds/r<N-1>/candidate-sass.txt` 不存在则被拦截。**所有轮次（含
+   candidate-nvdisasm.txt`）+ NCU 实测（`candidate.ncu-rep`、details、metrics），并写进
+   `rounds/r<N>/analysis.md`，**才能开始下一轮的 solution/ 代码修改**。这由 hook
+   (`block_solution_rewrite.py` 的 round artifact gate) 机械强制：下一轮 Edit solution/
+   时，若上一轮这些产物或 `analysis.md` 缺任一项就会被拦截。**所有轮次（含
    re-architecture 里程碑）都必须用 `.rlcr/current/rounds/r<N>/` 目录结构**，
-   否则 hook 的 direction/SASS 门槛失效（这正是 v2/v3 里程碑当初绕过 SASS 的原因）。
+   否则 hook 的 direction/产物门槛失效（这正是 v2/v3 里程碑当初绕过 SASS 的原因）。
 
 ### 错误恢复流程（编译失败 / 精度错误时）
 
@@ -155,7 +155,7 @@ clean context、抗压缩、单一真相、互不直连。下表是**完整的�
 | `summary.md`（滚动索引，一行一轮） | analysis | master / analysis | 轨迹（平时扫它，不重读原始 dump） |
 | living lessons（campaign 副本） | analysis（写/prune） | 全体 | 教训沉淀；master finalize 时回灌全局 |
 | `state.md`（`当前轮: r<N>` 行 / verdict / 最新 NCU duration） | master（轮号行）+ analysis（verdict/duration） | 全体 + **hook** + SessionStart 进度卡 | 进度 / 抗压缩恢复 |
-| `.initial-impl-done` / `.direction-read-marker`（机械 marker） | code1（建锁）/ hook（读 direction 时刷新） | **hook** | 防重写 / 先读方向 / SASS 门槛的判定依据 |
+| `.initial-impl-done` / `.direction-read-marker`（机械 marker） | code1（建锁）/ hook（读 direction 时刷新） | **hook** | 防重写 / 先读方向 / 完整产物门槛的判定依据 |
 
 > 非文档的两个指针通道（不可消除的最小量）：**spawn prompt**（master→subagent，给路径+
 > 轮号+目标）、**return text**（subagent→master，给 verdict/指向哪份文档，限字数）。
@@ -192,7 +192,7 @@ clean context、抗压缩、单一真相、互不直连。下表是**完整的�
 - **round 1 = 初始从头实现（code1）= v1。** 之后：
   - **code2 渐进轮 N**：`cp solution/<family>_v<N-1>.<ext> solution/<family>_v<N>.<ext>`
     （Bash 建**新文件**，防重写 hook 放行新文件）→ 对 **v<N>** 做**一个 lever 的 Edit**
-    （Edit 触发"先读方向"+SASS 门槛，纪律/门槛不丢）。"渐进"= `diff v<N-1> v<N>` 只含
+    （Edit 触发"先读方向"+完整产物门槛，纪律/门槛不丢）。"渐进"= `diff v<N-1> v<N>` 只含
     一个 lever（analysis 核对）。
   - **code1 re-arch 轮 N**：直接 Write 全新 `<family>_v<N>.<ext>`（FROM SCRATCH）。
 - code2 **仍无 Write 工具**：靠 `cp`(Bash)+`Edit` 实现"复制上一版 + 改一处"，从工具层
@@ -252,7 +252,7 @@ analysis 只给**带证据的枯竭建议**；**扣丢弃扳机的是 master**�
 
 某轮目录 `rounds/r<N>/` 里 `direction.md` 存在但 `analysis.md` 不存在 ⇒ **该轮已开未完**，
 按 Step 7 的 a/b/c 续做未完成的产物，**不要重开新轮、不要跳过未生成的产物**。master
-每轮把 `state.md` 的「当前轮: r<N>」与 verdict/最新 NCU duration 维护好（SASS 门槛 hook
+每轮把 `state.md` 的「当前轮: r<N>」与 verdict/最新 NCU duration 维护好（产物门槛 hook
 与 SessionStart 进度卡都依赖它）。
 
 ### 新增 artifact（都在 `.rlcr/current/`，不 commit）
@@ -281,7 +281,7 @@ analysis 只给**带证据的枯竭建议**；**扣丢弃扳机的是 master**�
 - **Step 8**（集成）/ **Step 9**（finalize，按 NCU 选最优）/ **Step 10**（报告）：master
   （集成的逐模块退化检查可 spawn analysis 复核）。
 
-> 下面 Step 1–10 的所有硬纪律（FROM SCRATCH、防重写、NCU 权威、SASS 门槛、4d-ceiling、
+> 下面 Step 1–10 的所有硬纪律（FROM SCRATCH、防重写、NCU 权威、完整产物门槛、4d-ceiling、
 > 90% roofline、退化不回退）**全部不变**，只是分摊到上述角色执行。各角色契约见
 > `.claude/agents/{analysis,code-impl,code-iter}.md`。
 
@@ -619,15 +619,19 @@ Triton 不在候选集。无论哪条路径都必须 FROM SCRATCH（不复制/�
 
 ### 实现
 
-1. 按 `direction.md` 用 **4d-0 选定的原语从头**实现完整 kernel，写在 `solution/`
-   （新开空文件,不复制/不继承任何已有 kernel——见全局铁律 -2 FROM SCRATCH）
+1. 按 `kernel-architecture.md` 用 **4d-0 选定的原语从头**实现完整 kernel，写在
+   `solution/<family>_v<N>.<ext>`（新开空文件,不复制/不继承任何已有 kernel——见
+   全局铁律 -2 FROM SCRATCH）
 2. 插入 `// MODULE: <id> BEGIN/END` 标记
-3. 写 benchmark adapter
+3. 写/更新 benchmark adapter 与 `ncu_candidate_runner.py`，指向本轮 v<N>
 4. `python bench/benchmark.py --correctness-only` — 正确性全部通过（正确性 gate 已
    内置在 benchmark.py：poison + oracle compare；`--correctness-only` 只跑这步、跳过计时）
-5. `python bench/benchmark.py` — 记录结果
-6. git commit: "initial kernel implementation"
-7. **创建渐进式修改锁**：`touch .rlcr/current/.initial-impl-done`
+5. `python bench/benchmark.py` — 仅作 sanity，记录结果但不据此下性能结论
+6. 生成本轮 `rounds/r<N>/` 的 NCU + 5 类静态产物：
+   `candidate.ncu-rep`、`candidate-details.txt`、`candidate-metrics.csv`、
+   `candidate.ptx`、`candidate.cubin`、`candidate-sass.txt`、
+   `candidate-res-usage.txt`、`candidate-nvdisasm.txt`
+7. **首次实现专属**：创建渐进式修改锁 `touch .rlcr/current/.initial-impl-done`
    - 此 marker 一旦存在，项目 hook（`.claude/hooks/block_solution_rewrite.py`）
      会强制两条规则（基于磁盘状态，**context 压缩也冲不掉**）：
      - **防重写**：拦截对该 campaign `solution/` 的 Write 覆盖，以及 shell
@@ -636,7 +640,7 @@ Triton 不在候选集。无论哪条路径都必须 FROM SCRATCH（不复制/�
        的 `rounds/r<N>/direction.md`（最新的那个）才放行；没读会被拦。
      - marker 不存在时两条都不生效（首次实现照常用 Write）。
    - 后续所有 solution/ 改动必须用 Edit；动手前先读本轮 direction（hook 会强制）
-8. 写 `.rlcr/current/initial-implementation-summary.md`
+8. git commit: "initial kernel implementation"（只提交代码/必要 adapter；`.rlcr/` 不提交）
 
 ### 重新实现（re-architecture，当 4d-ceiling 或 Step 7 判定需换架构时）
 
@@ -652,42 +656,29 @@ Triton 不在候选集。无论哪条路径都必须 FROM SCRATCH（不复制/�
    `v` 的数字必须 = 轮号 N，**不要**用与轮次脱钩的随意编号，**也不要** `rm`/`touch`
    那个锁。保留旧版本文件供对比；绝不 Write 覆盖旧文件本身（覆盖已存在文件仍被 hook 拦）。
 3. 把 candidate ABI / adapter 切到新文件；旧文件在新版验证更快后用 `git rm` 删除。
-4. 新文件插 MODULE 标记，跑 correctness + benchmark，写 `rounds/r<N>/` 的
-   direction/summary/analysis + 5 类 SASS 产物，commit "re-architecture: <新架构>
-   (initial)"，然后对**新文件**进入 Step 6/7 的渐进迭代（锁一直在,hook 全程强制）。
+4. 新文件插 MODULE 标记，跑 correctness + benchmark，生成 `rounds/r<N>/` 的 NCU +
+   5 类静态产物，commit "re-architecture: <新架构> (initial)"，然后由 Step 6 的
+   analysis 读取本轮产物，写 analysis/summary/下一轮 direction（锁一直在,hook 全程强制）。
 
 ---
 
-## Step 6: Profile 新 Kernel + 模块分解
+## Step 6: 分析新 Kernel + 模块分解
 
 > **执行者：master spawn `analysis`。** 初版 = round 1 = v1，其分析落 `rounds/r1/`。
-> analysis 读 v1 产物做对比+模块分解，写 `decomposition.md`/`global-strategy.md` 与
+> code1 已在 Step 5 生成 `rounds/r1/` 的 NCU + 5 类静态产物；analysis 读取这些产物
+> 做对比+模块分解，写 `decomposition.md`/`global-strategy.md` 与
 > **首个迭代轮** `rounds/r2/direction.md`（round 2 起进内循环）；master 据其 return 更新
 > `module-tracker.json` 后进入 Step 7 内循环。
 
-### 6a. NCU 实测
+### 6a. 产物完整性检查
 
-1. 写 `.rlcr/current/profiles/ncu_candidate_runner.py`
-2. NCU profile：
-   ```bash
-   ncu --set full --section PmSampling --section PmSampling_WarpStates --section SourceCounters \
-     -k "regex:<NAME>" -c 1 -o .rlcr/current/profiles/initial \
-     python .rlcr/current/profiles/ncu_candidate_runner.py
-   ncu --import .rlcr/current/profiles/initial.ncu-rep --page details > .rlcr/current/profiles/initial-details.txt
-   ncu --import .rlcr/current/profiles/initial.ncu-rep --csv > .rlcr/current/profiles/initial-metrics.csv
-   ```
+确认 `.rlcr/current/rounds/r1/` 已包含：
+`candidate.ncu-rep`、`candidate-details.txt`、`candidate-metrics.csv`、`candidate.ptx`、
+`candidate.cubin`、`candidate-sass.txt`、`candidate-res-usage.txt`、
+`candidate-nvdisasm.txt`。若缺任何一项，先回到 Step 5/code1 补齐，不得用
+`.rlcr/current/profiles/initial.*` 另起一套平行产物。
 
-### 6b. 静态代码分析
-
-```bash
-nvcc -ptx -lineinfo -arch=<ARCH> <source.cu> -o .rlcr/current/profiles/initial.ptx
-nvcc -cubin -lineinfo -arch=<ARCH> <source.cu> -o .rlcr/current/profiles/initial.cubin
-cuobjdump -sass .rlcr/current/profiles/initial.cubin > .rlcr/current/profiles/initial-sass.txt
-cuobjdump -res-usage .rlcr/current/profiles/initial.cubin > .rlcr/current/profiles/initial-res-usage.txt
-nvdisasm -gi -sf .rlcr/current/profiles/initial.cubin > .rlcr/current/profiles/initial-nvdisasm.txt
-```
-
-### 6c. 对比分析 + 模块分解
+### 6b. 对比分析 + 模块分解
 
 分解前先读 `docs/module_decomposition_guide.md`（分解原则、典型 GEMM/Attention/
 Reduction 分解、共享资源识别、优化顺序）。
@@ -736,8 +727,8 @@ Reduction 分解、共享资源识别、优化顺序）。
 1. 读 `rounds/r<N>/direction.md`（**必读**：hook 会拦截"未读方向就
    Edit solution/"，没读这一步后面改不动）
 1.5. **本轮一开始就把 `.rlcr/current/state.md` 的当前轮号设为 N**——写一行
-   **精确格式 `当前轮: r<N>`**（如 `当前轮: r8`）。SASS 门槛 hook 读这一行作为
-   **权威轮号**，据此检查"上一轮 r\<N-1\> 的 `candidate-sass.txt` 是否就绪"；不再
+   **精确格式 `当前轮: r<N>`**（如 `当前轮: r8`）。产物门槛 hook 读这一行作为
+   **权威轮号**，据此检查"上一轮 r\<N-1\> 的完整 profile/分析产物是否就绪"；不再
    靠目录排序猜。**轮号必须在改 solution/ 之前就更新好**，否则 hook 会按上一轮的
    号判定、检查错对象（这正是历史上 SASS 被绕过的根因）。
 2. 如有上轮 P0/P1 issues 先修复
@@ -758,7 +749,9 @@ Reduction 分解、共享资源识别、优化顺序）。
    - **`diff solution/<family>_v<N-1>.<ext> solution/<family>_v<N>.<ext>`** — 检查本轮所有
      改动（v<N> 对 git 是整文件新增，故用版本间 diff，不用 `git diff`）
    - MODULE 内的改动：正常
-   - MODULE 外的改动：**每一处都必须在 rounds/r<N>/summary.md 中说明因果关系**（"改了 X 是因为模块内改了 Y，导致 Z 接口不兼容"）。无法说明因果关系的外部改动 → 撤销那处 Edit
+   - MODULE 外的改动：**每一处都必须能由 analysis 在 rounds/r<N>/summary.md 中说明因果关系**
+     （"改了 X 是因为模块内改了 Y，导致 Z 接口不兼容"）。无法说明因果关系的外部改动
+     → 撤销那处 Edit
    - `python bench/benchmark.py --correctness-only` — 正确性必须通过（**这一步是
      gate：错的代码不能进入 profile/benchmark**）
    - `python bench/benchmark.py` — 仅作**粗筛 sanity**（量级是否合理、有没有跑飞），
@@ -776,7 +769,8 @@ Reduction 分解、共享资源识别、优化顺序）。
    - 注意时序：本步只是"分析判进退"的占位说明，真正的数值对比发生在 7b（跑 NCU）
      之后的 7c；commit（第 7 步）可以先做（git 历史即安全网），进退结论落在 7c。
 7. git commit: "r<N> (<id>): <描述>" — **只提交 `solution/` 代码**（`.rlcr/` 不进 git）
-8. 写 `rounds/r<N>/summary.md`，其中包含本轮 diff 统计（改了哪些文件、多少行）
+8. 不写 `rounds/r<N>/summary.md`；code2 只产出代码、验证结果、NCU 与静态产物。
+   本轮 summary 由 analysis 在 7c 从版本间 diff / git diff 重建。
 
 ### 7b. Profile（NCU 实测 + 静态分析）
 

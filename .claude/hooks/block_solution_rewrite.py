@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """IterKernel solution/ 守卫（PreToolUse + PostToolUse hook）。
 
-两条抗压缩保障，以磁盘上的状态为依据，因此能在任何 context 摘要后存活
+三类抗压缩保障，以磁盘上的状态为依据，因此能在任何 context 摘要后存活
 （模型的记忆无关紧要——它们在每次工具调用时作为独立进程运行）：
 
 1. 防重写（means 层）。一旦某个 campaign 的
@@ -16,10 +16,10 @@
    ``.rlcr/current/direction.md``）自其上次写入后已被读过。读它（PostToolUse）
    会刷新 ``.rlcr/current/.direction-read-marker``。
 
-3. SASS 门槛（process 层）。在第 N 轮（N>=2）对已锁定的 ``solution/`` 做
-   ``Edit`` 会被拒绝，直到上一轮生成了它的 SASS/静态分析
-   （磁盘上的 ``.rlcr/current/rounds/r<N-1>/candidate-sass.txt``）。强制执行
-   「每轮都要做 SASS, 否则不进入下一轮代码修改」。第 1 轮永不设门槛。
+3. 完整产物门槛（process 层）。在第 N 轮（N>=2）对已锁定的 ``solution/`` 做
+   ``Edit`` 会被拒绝，直到上一轮生成了完整 NCU、5 类静态产物和 ``analysis.md``。
+   强制执行「每轮都要做 profile/静态分析/诊断，否则不进入下一轮代码修改」。
+   第 1 轮永不设门槛。
 
 调用方式：
   pre  → handle_pre_tool_use   (matcher: Write|Edit|MultiEdit|Bash)
@@ -53,14 +53,25 @@ DIRECTION_REASON = (
     "{path}。读完它再做增量 Edit（即使 context 被压缩也不能跳过这一步）。"
 )
 
-# 代表每轮必须生成的 5 类静态产物。它出现在某个 round 目录里，
-# 即表示该轮的 SASS/静态分析已经生成。
-SASS_ARTIFACT = "candidate-sass.txt"
-SASS_REASON = (
-    "🔬 上一轮（{path}）的 SASS/静态分析尚未生成。硬门槛：每一轮都必须先完成 5 类"
-    "静态产物（candidate.ptx/.cubin/candidate-sass.txt/candidate-res-usage.txt/"
+# 上一轮必须完整落盘的 profile / 静态分析 / 诊断产物。缺任一项都不能进入下一轮
+# solution/ 编辑；这把文档里的“5 类静态产物 + NCU + analysis.md”变成机械门槛。
+REQUIRED_PREV_ROUND_ARTIFACTS = [
+    "candidate.ptx",
+    "candidate.cubin",
+    "candidate-sass.txt",
+    "candidate-res-usage.txt",
+    "candidate-nvdisasm.txt",
+    "candidate.ncu-rep",
+    "candidate-details.txt",
+    "candidate-metrics.csv",
+    "analysis.md",
+]
+ROUND_ARTIFACTS_REASON = (
+    "🔬 上一轮（{path}）的 profile/静态分析/诊断产物尚未完整生成，缺失：{missing}。"
+    "硬门槛：每一轮都必须先完成 NCU（candidate.ncu-rep/details/metrics）、5 类静态产物"
+    "（candidate.ptx/.cubin/candidate-sass.txt/candidate-res-usage.txt/"
     "candidate-nvdisasm.txt）并写进 analysis.md，才能开始下一轮的 solution/ 代码修改。"
-    "请先为上一轮生成静态分析（即使 context 被压缩也不能跳过）。"
+    "请先补齐上一轮产物（即使 context 被压缩也不能跳过）。"
 )
 
 
@@ -88,7 +99,7 @@ def emit_warn(msg: str) -> None:
 UNLOCKED_WARN = (
     "⚠️ 渐进式修改锁缺失：{root}/.rlcr/current/.initial-impl-done 不存在,但该 "
     "campaign 已进入迭代(存在 rounds/r<N>/)。说明锁在某次 re-arch 摘掉后没补回来,"
-    "防重写 / 先读 direction / SASS 硬门槛**当前全部失效**。请立刻 "
+    "防重写 / 先读 direction / 完整产物硬门槛**当前全部失效**。请立刻 "
     "`touch {root}/.rlcr/current/.initial-impl-done` 恢复纪律,再继续改 solution/。"
 )
 
@@ -226,10 +237,9 @@ def declared_current_round(cur: Path) -> int | None:
     return int(m.group(1)) if m else None
 
 
-def prev_round_sass_missing(root: Path) -> Path | None:
-    """SASS 门槛：在当前轮编辑 solution/ 会被阻止，直到**上一轮**生成了它的
-    SASS/静态分析。强制执行「每轮都要做 SASS, 否则不进入下一轮代码修改」。
-    第 1 轮（没有上一轮）永不设门槛。
+def prev_round_artifacts_missing(root: Path) -> tuple[Path, list[str]] | None:
+    """上一轮产物门槛：在当前轮编辑 solution/ 会被阻止，直到**上一轮**生成完整
+    NCU、静态分析和 analysis.md。第 1 轮（没有上一轮）永不设门槛。
 
     「上一轮是谁」的判定（修掉旧的 `dirs[-2]` 错位 bug）：
     旧实现把「目录号第二大的」当上一轮，依赖 agent 建 round 目录的时机——簿记
@@ -264,8 +274,11 @@ def prev_round_sass_missing(root: Path) -> Path | None:
             return None
         prev_dir = dirs[nums[-2]]
 
-    artifact = prev_dir / SASS_ARTIFACT
-    return None if artifact.exists() else artifact
+    missing = [
+        name for name in REQUIRED_PREV_ROUND_ARTIFACTS
+        if not (prev_dir / name).exists()
+    ]
+    return (prev_dir, missing) if missing else None
 
 
 def handle_pre_tool_use(payload: dict) -> int:
@@ -305,9 +318,15 @@ def handle_pre_tool_use(payload: dict) -> int:
         cur = direction_unread(root)
         if cur:
             return emit_deny(DIRECTION_REASON.format(path=cur))
-        sass = prev_round_sass_missing(root)
-        if sass:
-            return emit_deny(SASS_REASON.format(path=sass.parent))
+        missing = prev_round_artifacts_missing(root)
+        if missing:
+            prev_dir, missing_names = missing
+            return emit_deny(
+                ROUND_ARTIFACTS_REASON.format(
+                    path=prev_dir,
+                    missing=", ".join(missing_names),
+                )
+            )
         return 0
 
     return 0

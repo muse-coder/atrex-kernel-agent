@@ -9,7 +9,7 @@
 2. 进度恢复卡（build_progress_block）：动态状态，从磁盘上活跃 campaign 的
    ``.rlcr/current/`` 读出——当前阶段、目标、最新一轮做到哪了。压缩往往发生在
    某一轮中途，只重注入规则不够：agent 还需要知道「我现在第几轮、在优化哪个
-   module、上一轮结论、下一步 direction、SASS 门槛过没过」，否则容易丢线头、
+   module、上一轮结论、下一步 direction、完整产物门槛过没过」，否则容易丢线头、
    重复上一轮或跳过没做完的 profile。
 
 输出走 stdout；对于 SessionStart hook，Claude Code 会把 stdout 加入 context。
@@ -62,6 +62,13 @@ ROUND_ARTIFACTS = [
     "direction.md", "summary.md", "analysis.md",
     "candidate.ptx", "candidate.cubin", "candidate-sass.txt",
     "candidate-res-usage.txt", "candidate-nvdisasm.txt",
+    "candidate.ncu-rep", "candidate-details.txt", "candidate-metrics.csv",
+]
+GATE_ARTIFACTS = [
+    "analysis.md",
+    "candidate.ptx", "candidate.cubin", "candidate-sass.txt",
+    "candidate-res-usage.txt", "candidate-nvdisasm.txt",
+    "candidate.ncu-rep", "candidate-details.txt", "candidate-metrics.csv",
 ]
 # 单个文件最多注入多少字符 / 行，避免把 context 撑爆。
 MAX_CHARS = 2500
@@ -168,11 +175,12 @@ def build_progress_block(cwd: str | None) -> str | None:
         for art in ROUND_ARTIFACTS:
             mark = "✓" if (rdir / art).exists() else "✗"
             present.append(f"{art}{mark}")
-        sass_ok = (rdir / "candidate-sass.txt").exists()
+        missing_gate = [name for name in GATE_ARTIFACTS if not (rdir / name).exists()]
         parts.append(
             f"\n--- 最新轮 r{n}（{rdir.relative_to(root)}）---\n"
             + "  ".join(present)
-            + f"\n本轮 SASS 门槛（candidate-sass.txt）：{'已满足' if sass_ok else '未满足——下一轮改 solution/ 会被 hook 拦'}"
+            + "\n本轮完整产物门槛："
+            + ("已满足" if not missing_gate else "未满足——下一轮改 solution/ 会被 hook 拦；缺失: " + ", ".join(missing_gate))
         )
         dir_ex = _excerpt(rdir / "direction.md")
         if dir_ex:

@@ -17,7 +17,7 @@ candidate 都从任务目录内的本地源码运行。
   注册/导出/构建方式暴露。
 - 不要传 `--use_fast_math`，除非 baseline 已经在用它，并且 candidate 使用完全
   相同的 flag。
-- 如果 baseline 是 Triton、CuTe DSL 或 Python，把它保持在本地，并构建一个本地
+- 如果 baseline 是 CuTe DSL 或 Python，把它保持在本地，并构建一个本地
   baseline adapter，使用与 candidate 相同的 benchmark ABI。
 - workload 在调优开始前就冻结。变更 workload、tolerance、评分或 benchmark 计时
   规则，都需要删除旧结果并重新测量 baseline 与 candidate 两侧。

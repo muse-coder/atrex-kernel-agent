@@ -17,7 +17,7 @@ Write 工具——**从工具层就只能 `cp`(Bash 复制上一版)+ `Edit`(改
 整文件,也无法凭空重写(这是设计)。"渐进"= `diff v<N-1> v<N>` 只含一个 lever。你**不**
 设计新架构、**不**判性能(那是 analysis;master 管战略)。
 
-> 为什么 cp+Edit 而非 Write:Write 新文件会**绕过** hook 的"先读方向"+SASS 门槛(那俩
+> 为什么 cp+Edit 而非 Write:Write 新文件会**绕过** hook 的"先读方向"+完整产物门槛(那俩
 > 只在 Edit 上触发);cp 出 v<N> 再 Edit,门槛照常生效,纪律不丢。
 
 **你是跨轮续用的（context 保留）**：master 在**同一架构内的多轮**会用 SendMessage 继续
@@ -56,7 +56,7 @@ Write 工具——**从工具层就只能 `cp`(Bash 复制上一版)+ `Edit`(改
      3 次修不好,就把 v<N> 重新 `cp` 自 v<N-1> 从头来、缩小目标。**性能退化绝不回退**(铁律#3)。
    - `python bench/benchmark.py` —— 仅 sanity(量级合理、没跑飞),**不下「快/慢」结论**。
 5. **生成本轮 NCU + 5 类静态产物**到 `rounds/r<N>/`(给 analysis 读;每轮必做,缺则
-   下一轮 Edit 会被 SASS 门槛拦)。下面是 C++ 路径命令；**CuTe DSL(.py) 路径**按
+   下一轮 Edit 会被完整产物门槛拦)。下面是 C++ 路径命令；**CuTe DSL(.py) 路径**按
    `config.toml` 的 build/profile 命令(JIT dump cubin)替换,SASS 仍用 `cuobjdump`/
    `nvdisasm` 取:
    ```bash

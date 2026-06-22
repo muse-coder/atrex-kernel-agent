@@ -70,15 +70,16 @@ pip 预编译 wheel（版本滞后）,也不要用 JIT 模式（运行时编译�
 /optimize-kernel 在 RTX PRO 5000 上优化 M=1024 的 FP8 GEMM，baseline 用 FlashInfer AOT
 ```
 
-命令会由**单个 agent 在当前对话内闭环**完成整个优化流程（不调 Workflow、
-不 spawn subagent，完整步骤见 `.claude/commands/optimize-kernel.md`）：
+命令会由当前会话里的 **master agent** 编排完成整个优化流程：master 负责战略判断，
+并用 Agent 工具 spawn `analysis` / `code-impl` / `code-iter` 三类 subagent；不调
+Workflow，完整编排见 `.claude/commands/optimize-kernel.md`：
 
 1. 理解需求、检测目标 GPU（`nvidia-smi`）、推断 workload shapes
 2. 为该 campaign 创建**独立 git 仓库** `/tmp/<slug>/`；在 agent 仓库
    `campaigns/operators/<slug>/` 只保留目录结构（`.gitkeep`）
 3. Profile baseline（NCU 实测 + PTX/SASS 静态分析）
 4. 分析瓶颈、设计 kernel 架构、模块分解（`// MODULE: <id>` 标记）
-5. 从零实现 CUDA C++ kernel（PTX inline asm，DeepGEMM 风格薄封装）
+5. 按复杂度选择实现原语（纯 CUDA+PTX / CUTLASS / CuTe DSL），从零实现 candidate
 6. 进入 RLCR 模块循环，逐模块增量迭代直到达到停止条件
 
 所有 kernel 代码的修改和 commit 都发生在 `/tmp/<slug>/` 独立 repo 中，
@@ -104,8 +105,8 @@ docs/           运行日志、profile 笔记、结果、决策记录
 
 ## RLCR 迭代循环
 
-`/optimize-kernel` 在 Step 7 进入逐模块的 RLCR 迭代，由同一个 agent 在对话内
-顺序完成。轮次用**全局递增编号 N**，**每轮一个目录** `.rlcr/current/rounds/r<N>/`
+`/optimize-kernel` 在 Step 7 进入逐模块的 RLCR 迭代，由 master 编排 `code-iter`
+和 `analysis` 交替完成。轮次用**全局递增编号 N**，**每轮一个目录** `.rlcr/current/rounds/r<N>/`
 存放该轮全部产物（**本地，不 commit**）。一轮三段（对应命令文档 Step 7a/7b/7c）：
 
 1. **实现（7a）** — 读 `rounds/r<N>/direction.md`，对目标 MODULE 做**增量 Edit**

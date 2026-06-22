@@ -13,10 +13,15 @@ target_gpu = ""              # 例：NVIDIA RTX PRO 5000（nvidia-smi 实测填�
 family = "example"           # kernel 系列名称
 
 [build]
-language = "cuda"            # cuda | triton | cutedsl
+language = ""                # cuda | cutedsl（由 4d-0 原语选择决定）
+primitive = ""               # cuda_ptx | cutlass | cutedsl；Triton 不在 candidate 候选集
 destination_passing_style = true
 baseline_entry_point = "baseline/kernel.cu::example_baseline"
-candidate_entry_point = "solution/kernel.cu::example_candidate"
+candidate_entry_point = "solution/example_v<N>.<ext>::example_candidate"
+# 记录本 campaign 实际使用的 build/profile 命令；benchmark.py 不直接读取这些字段。
+build_command = ""
+ncu_command = ""
+static_artifacts_command = ""
 
 # 这些镜像 bench/benchmark.py 的同名 CLI 参数（benchmark.py 不直接读本文件，
 # 这里仅作该 campaign 的记录/默认值参考；真正生效靠传给 benchmark.py 的命令行）。

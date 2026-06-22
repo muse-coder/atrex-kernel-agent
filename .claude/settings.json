@@ -19,7 +19,7 @@
           {
             "type": "command",
             "command": "python3 \"${CLAUDE_PROJECT_DIR}/.claude/hooks/block_solution_rewrite.py\" pre",
-            "statusMessage": "IterKernel solution guard (rewrite + direction-read)",
+            "statusMessage": "IterKernel solution guard (rewrite + direction-read + artifacts)",
             "timeout": 10
           }
         ]
