@@ -4,6 +4,33 @@
 > `.claude/commands/optimize-kernel.md`「## 多 agent 编排」节**；本文与其冲突时以该命令
 > 文档为准。各角色契约见 `.claude/agents/{analysis,code-impl,code-iter}.md`。
 
+## 0. TL;DR
+
+**一句话**：master 定方向、analysis 诊断判进退、code1 从头实现、code2 渐进改；靠磁盘
+文档协作，内循环自转、外循环靠 master 按证据换架构，每轮存一个 `vN` 版本，直到 ≥90% roofline。
+
+- **核心思路**：单 agent 串行 RLCR → `1 master + 3 subagent`，用 **Agent 工具** spawn
+  （不用 Workflow），**只通过磁盘 artifact 交接信息**；把"重 context 的分析"和"写代码"
+  分开，agent 之间不直接对话。
+- **四角色**：master(战略：定/换总纲、守 90% roofline) · analysis(诊断：按绝对 roofline
+  判进退、只**建议**枯竭) · code1(从头实现，Write 新文件) · code2(渐进，**无 Write**，
+  `cp 上一版 + Edit 一处`)。
+- **信息流**：spawn prompt 给指针、return 给摘要、真信息全走磁盘；subagent 互不直连，
+  spawn 树扁平(master 起所有人)。
+- **两循环**：内循环 `code2↔analysis` 自转(master 不插手)；analysis 报枯竭才上浮，master
+  过**丢弃门槛**(judge by ceiling + pathology checklist + 硬证据，双向)决定是否换架构。
+- **版本命名**：每轮源码 = `solution/<family>_v<N>`(v=全局轮号，round1=v1)；全留存 →
+  跨轮 diff + finalize 按 NCU 选最优 vN。
+- **原语三选一**(Step 4d-0，按算子复杂度)：纯 CUDA+PTX / CUTLASS / CuTe DSL(不固定 CUDA)。
+- **上下文**：code2 续用(保留手感)；analysis routine 续用、pivot 起 fresh(无偏裁判)；
+  不变式 = summary.md + 每轮 analysis.md 自足到能重建轨迹("fresh 靠读不靠记")。
+- **抗压缩**：只有 master 长命会压缩 → SessionStart hook 重注入 + 重读磁盘恢复；**先落盘
+  后 return**，return 丢了也能恢复 verdict。
+- **不变**：所有硬铁律(FROM SCRATCH / 防重写 / NCU 权威 / SASS 门槛 / 90% roofline)
+  原样保留，只是分摊到各角色，hook 按 cwd+file_path 校验子 agent 照拦。
+
+详见下文分节与图 A–E。
+
 ## 1. 一句话总览
 
 `/optimize-kernel` 的会话 agent 是 **master（战略层 orchestrator）**，它**不亲手写
