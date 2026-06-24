@@ -9,6 +9,11 @@ Nsight Compute 证据、迭代式 agent 优化（RLCR）。
 ## 仓库结构
 
 ```text
+AGENTS.md                      Codex 版仓库级 agent 入口
+.codex/                        Codex 版 prompt 与角色契约
+  prompts/optimize-kernel.md     Codex master playbook
+  agents/                        master / analysis / code-impl / code-iter 契约
+
 docs/                          规则与模板
   kernel_optimization_rules.md   优化护栏（正确性优先、对称 ABI、证据支撑）
   benchmark_contract.md          benchmark 契约（A/B 交错、CUDA-event、来源追溯）
@@ -29,6 +34,8 @@ campaigns/operators/           campaign 目录占位（只保留 .gitkeep，
 
 scripts/                       可选 worktree 启动器
   launch_task.sh                 为 agent 仓库建隔离 worktree 并起 Claude
+  launch_codex_task.sh           为 agent 仓库建隔离 worktree 并起 Codex
+  codex_round_guard.py           Codex 版手动过程门槛检查
   launch_tasks/                  每个任务一个启动脚本
 
 external/                      知识子模块（可选）
@@ -84,6 +91,21 @@ Workflow，完整编排见 `.claude/commands/optimize-kernel.md`：
 
 所有 kernel 代码的修改和 commit 都发生在 `/tmp/<slug>/` 独立 repo 中，
 不提交到 agent 仓库（见 CLAUDE.md「Kernel 代码仓库隔离」）。
+
+### Codex 版本
+
+Codex 适配层保留同一套 RLCR / artifact-first 设计，但入口换成 `AGENTS.md` 与
+`.codex/`：
+
+```bash
+scripts/launch_codex_task.sh campaigns/operators/example_task
+```
+
+这会创建任务专属 worktree，并启动 Codex 读取 `AGENTS.md` 与
+`.codex/prompts/optimize-kernel.md`。Codex 版不依赖 Claude hooks；进入 code-iter 轮时，
+读完 `direction.md` 后、编辑 `solution/` 前，必须通过
+`scripts/codex_round_guard.py` 显式检查过程门槛。设计说明见
+[`docs/codex_agent_design.md`](docs/codex_agent_design.md)。
 
 ## 任务生命周期
 
