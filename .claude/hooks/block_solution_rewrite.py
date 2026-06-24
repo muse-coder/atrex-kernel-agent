@@ -103,6 +103,36 @@ UNLOCKED_WARN = (
 )
 
 
+CODE2_ACTIVE_MARKER_REL = (".rlcr", "current", ".code2-active")
+
+CODE2_REUSE_WARN = (
+    "♻️ 本架构已有活跃 code2(code-iter)实例（{root}/.rlcr/current/.code2-active 存在）。"
+    "应当 **SendMessage 续用** state.md 里记录的 `active_code2:` 实例（保留对 kernel 的手感："
+    "MODULE 边界/试过什么/寄存器预算/layout 怪癖），**不要每轮 Agent 新开**——新开会丢手感且多花 "
+    "token。只有 master re-arch（spawn code1）才该起新 code2。若这确实是 re-arch 后的首个 code2，"
+    "忽略本警告（标记会在 code1 spawn 时被清）。"
+)
+
+
+def campaign_root_from_agent_prompt(prompt: str) -> Path | None:
+    """从 Agent 工具的 prompt 里定位 campaign 根目录（master 的 cwd 在 agent repo，
+    campaign 在 /tmp，故不能靠 cwd——靠 prompt 里出现的 .rlcr/current 路径反推）。
+    定位不到则返回 None（fail-open，不警告）。"""
+    if not prompt:
+        return None
+    m = re.search(r"([^\s'\"]+?)/\.rlcr/current", prompt)
+    if m:
+        root = Path(m.group(1))
+        if (root / ".rlcr" / "current").exists():
+            return root
+    for cand in re.findall(r"/[A-Za-z0-9._\-/]+", prompt):
+        p = Path(cand)
+        for anc in [p, *p.parents]:
+            if (anc / ".rlcr" / "current").exists():
+                return anc
+    return None
+
+
 def resolve_path(raw: str, cwd: str | None) -> Path:
     p = Path(raw.strip().strip('"').strip("'")).expanduser()
     if not p.is_absolute() and cwd:
@@ -260,6 +290,31 @@ def handle_pre_tool_use(payload: dict) -> int:
     tool = (payload.get("tool_name") or "").lower()
     tool_input = payload.get("tool_input") or {}
     cwd = payload.get("cwd")
+
+    if tool in ("task", "agent"):
+        # code2 续用 backstop（非阻断）：本架构第二次 Agent-spawn code-iter 时警告应改 SendMessage；
+        # 标记自管：首个 code2 spawn 时建、code1(code-impl) spawn 时清（=re-arch 边界）。
+        sub = (tool_input.get("subagent_type") or "").lower()
+        root = campaign_root_from_agent_prompt(tool_input.get("prompt") or "")
+        if root is None:
+            return 0  # 定位不到 campaign -> fail-open
+        marker = root.joinpath(*CODE2_ACTIVE_MARKER_REL)
+        if sub in ("code-iter", "code2"):
+            if marker.exists():
+                emit_warn(CODE2_REUSE_WARN.format(root=root))
+                return 0  # 仅警告，仍放行
+            try:
+                marker.touch()
+            except OSError:
+                pass
+            return 0
+        if sub in ("code-impl", "code1"):
+            try:
+                marker.unlink()  # re-arch 边界：清标记，下一个 code2 合法新开
+            except OSError:
+                pass
+            return 0
+        return 0
 
     if tool == "write":
         # 防重写已不再由本 hook 强制：Write 一律放行（靠 code2 无 Write 工具 +

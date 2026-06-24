@@ -23,6 +23,17 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "matcher": "Task|Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR}/.claude/hooks/block_solution_rewrite.py\" pre",
+            "statusMessage": "IterKernel code2 reuse backstop",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "PostToolUse": [

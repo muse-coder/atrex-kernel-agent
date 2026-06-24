@@ -182,6 +182,18 @@ clean context、抗压缩、单一真相、互不直连。下表是**完整的�
 
 - **续用不与 hook 冲突**：续用的 code2/analysis 每轮仍须 Read 本轮 `direction.md`/产物
   （hook 强制），marker 按文件 mtime 判，照常放行。
+- **续用是 master 纪律，且默认易滑——必须可追踪 + 有 backstop**（实战教训：master 的
+  本能是「委派活 = 调 `Agent` 新开」，于是会**每轮把 code2 新开**而丢掉手感。两道防线）：
+  1. **追踪（让续用成为有据的默认）**：master 在一代架构里**第一次** spawn code2（新 `Agent`
+     调用）后，**立刻把其 agentId 记进 `state.md` 顶部** `active_code2: <agentId>`；此后**每一轮
+     都 `SendMessage` 给这个 id**（不再调 `Agent`）。re-arch 起新架构时把该行清空/改成新 code1→
+     新 code2 的 id。analysis 同理可记 `active_analysis_routine: <id>`（routine 续用），但
+     **pivot 诊断永远新 `Agent`，绝不复用此 id**（见 #4 fresh 护栏）。
+  2. **backstop（机制提醒，非阻断）**：`block_solution_rewrite.py` 的 PreToolUse 现也挂在
+     **`Task|Agent`** 上：当本架构已 spawn 过 code2（存在 `.rlcr/current/.code2-active` 标记）
+     又再次 `Agent`-spawn `code-iter` 时，emit 一条非阻塞警告「应 SendMessage 续用 active_code2，
+     勿新开」。标记由 hook 自管：首个 code2 spawn 时建、`code-impl`(code1) spawn 时清（=re-arch
+     边界）。hook 只能**警告**，真正发 SendMessage 仍是 master 动作。
 - **不变式（无论续用还是 fresh 都要守）**：`summary.md`（趋势）+ 每轮 `analysis.md`
   （附 NCU/SASS 证据）必须**自足到能重建轨迹**——因为 pivot 用 fresh 实例、且续用实例
   攒久了照样会被压缩、得从磁盘恢复。「fresh ≠ 看不见历史」：fresh analysis 靠**读**
@@ -287,9 +299,13 @@ analysis 只给**带证据的枯竭建议**；**扣丢弃扳机的是 master**�
 - **Step 5**（首次从头实现 = **round 1 = v1**）：master spawn **code1**（写 `<family>_v1`）。
 - **Step 6**（profile v1 + 模块分解 + 写**首个迭代轮** `rounds/r2/direction.md`）：master
   spawn **analysis**（v1 的分析落 `rounds/r1/`；r1 是初始实现轮）。
-- **Step 7 内循环**（从 round 2 起）：每轮 master 设 state 轮号 → spawn **code2**
-  （cp v<N-1>→v<N> + 7a 改一 lever + 7b 产物）→ spawn **analysis**（7b 解读 + 7c
+- **Step 7 内循环**（从 round 2 起）：每轮 master 设 state 轮号 → **驱动 code2**
+  （cp v<N-1>→v<N> + 7a 改一 lever + 7b 产物）→ **驱动 analysis**（7b 解读 + 7c
   分析/verdict/下轮 direction）。verdict=CONTINUE 继续；枯竭建议上浮到 master 丢弃门槛。
+  **「驱动」的实例规则（别每轮新开！见生命周期节）**：本架构**首轮** code2/routine-analysis
+  用新 `Agent` 并把 agentId 记进 `state.md`（`active_code2:` / `active_analysis_routine:`）；
+  **之后每轮用 `SendMessage` 续用那个 id**，不要再 `Agent` 新开（新开会丢手感+多花 token，
+  且会触发 hook 的 backstop 警告）。只有 master re-arch（spawn code1）才丢弃旧 code2、起新实例。
 - **Step 8**（集成）/ **Step 9**（finalize，按 NCU 选最优）/ **Step 10**（报告）：master
   （集成的逐模块退化检查可 spawn analysis 复核）。
 
