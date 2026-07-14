@@ -109,35 +109,52 @@ target architecture — a Blackwell query never returns Hopper or CDNA pages.
 
 Map your input parameters to filters: `platform` → `--vendor`, `framework` →
 `--dsl`, and the target GPU/architecture → `--arch` (codenames or sm/gfx/chip
-aliases, e.g. `sm90`, `gfx942`, `mi300x`, `b200`). Keywords are AND-ed and each
-word is matched independently, so prefer **several narrow queries** over one long
-phrase; add `--any` for OR. Architecture-neutral/general pages are always
-included; only competing architectures are filtered out.
+aliases, e.g. `sm90`, `gfx942`, `mi300x`, `b200`). Map the profiler's exact
+`SYMPTOMS` values to repeatable `--symptom` filters. Use `--section` to select
+the page role (`kernels`, `optimization`, `features`, or `programming`) and
+`--exclude-section articles` for implementation work. Use `--kernel-type` for
+the broad target family and prefer `--operator` for a named operator; both match
+stable title/path vocabulary only, so a page that merely mentions GEMM in its
+body is not misclassified as a GEMM case.
+Keywords are AND-ed and each word is matched independently, so prefer **several
+narrow queries** over one long phrase; add `--any` for OR. Architecture-neutral/
+general pages are always included unless a section filter deliberately removes
+them.
 
 **Run L1 as a short sequence of scoped queries — one query rarely covers both the
 "what" (which kernel) and the "how" (techniques / hardware / bottleneck patterns):**
 
 ```bash
-# 1) kernel-type query — locate the target kernel pages (WHAT)
-python3 <gpu-wiki>/scripts/query.py "moe gemm" --arch b200 --vendor nvidia
+# 1) kernel-type query — locate only implementation/case pages (WHAT).
+#    Keep long-form articles out of an implementation plan.
+python3 <gpu-wiki>/scripts/query.py "gemm" --arch b200 --vendor nvidia \
+  --operator gemm --section kernels --section programming --exclude-section articles
 
-# 2) symptom / technique queries — the HOW layer, derived from the profiling
-#    bottleneck (Step 3). One query per relevant symptom / technique keyword:
-python3 <gpu-wiki>/scripts/query.py "warp specialization" --arch b200 --vendor nvidia
-python3 <gpu-wiki>/scripts/query.py "tile scheduling persistent" --arch b200 --vendor nvidia
-python3 <gpu-wiki>/scripts/query.py "tcgen05 tmem" --arch b200 --vendor nvidia
+# Named operators use canonical aliases (e.g. gdn, flash-attention, mla).
+python3 <gpu-wiki>/scripts/query.py --arch b200 --vendor nvidia \
+  --operator gdn --section kernels
 
-# 3) completeness backstop — browse everything in scope (omit keywords), or read
-#    docs/index.md, to catch relevant pages the keyword queries missed
-python3 <gpu-wiki>/scripts/query.py --arch b200 --vendor nvidia --dsl cutedsl
+# 2) diagnosis query — consume the exact controlled value from summary.txt.
+#    This returns the diagnosis card, whose candidate-technique links are read next.
+python3 <gpu-wiki>/scripts/query.py --arch b200 --vendor nvidia \
+  --section optimization --symptom pipeline-stalls
+
+# 3) hardware-mechanism query — explain and validate the chosen technique.
+python3 <gpu-wiki>/scripts/query.py "tcgen05 tmem" --arch b200 --vendor nvidia \
+  --section features --section programming --exclude-section articles
+
+# 4) completeness backstop — browse only the intended implementation roles.
+python3 <gpu-wiki>/scripts/query.py --arch b200 --vendor nvidia --dsl cutedsl \
+  --section kernels --section optimization --section features --section programming \
+  --exclude-section articles
 python3 <gpu-wiki>/scripts/query.py --list-arch          # valid arch values + aliases
 ```
 
-Then open the returned pages and `grep` within them to confirm. The kernel-type
-query (1) gives the target kernels; the symptom/technique queries (2) and the
-browse backstop (3) ensure the optimization-technique, bottleneck-pattern, and
-hardware-mechanism pages for the target architecture are not missed. Fall back to
-the README hierarchy only if the scoped queries yield nothing.
+Then open the returned pages and follow the diagnosis card's candidate-technique
+links to confirm applicability. The kernel-type query (1) gives the target
+kernels; the exact-symptom query (2) gives a bounded diagnosis; the hardware
+query (3) validates the selected implementation mechanism. Fall back to the
+README hierarchy only if the scoped queries yield nothing.
 
 ### 3rdparty Knowledge Base Usage Guide
 

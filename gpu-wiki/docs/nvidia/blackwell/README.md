@@ -7,13 +7,7 @@ Index for `nvidia/blackwell/`.
 | Directory | Description |
 |------|------|
 | [articles/](articles/) | Comprehensive Guide to NVIDIA Blackwell Architecture … |
-| [cutedsl/](cutedsl/) | SM100 Blackwell CuTeDSL Panorama … |
-| [gluon/](gluon/) | Gluon Tutorial 06: Tensor Memory and tcgen05_mma |
-| [hands-on/](hands-on/) | Block-Scaled MMA … |
-| [hardware/](hardware/) | Two-SM Cooperative MMA … |
+| [features/](features/) | Hardware features together with their constraints, strategies, and practical entry points |
 | [kernels/](kernels/) | DeepGEMM -- FP8 GEMM with Fine-Grained Scaling … |
-| [languages/](languages/) | CUDA C++ for Blackwell Kernels … |
-| [migration/](migration/) | Register Accumulators to TMEM … |
-| [patterns/](patterns/) | Not Reaching Peak FLOPS … |
-| [techniques/](techniques/) | Cache Policy Differentiation … |
-| [triton/](triton/) | triton |
+| [optimization/](optimization/) | Cross-feature methods and symptom-driven diagnosis |
+| [programming/](programming/) | CUDA/PTX plus CuTeDSL, Gluon, and Triton programming references |

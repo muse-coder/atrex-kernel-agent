@@ -302,6 +302,6 @@ This content is compiled from the following Zhihu articles:
 - **GPU Memory Hierarchy**: [GPU Memory Hierarchy and Optimization](gpu-memory-hierarchy.md) -- HBM/L2/SRAM bandwidth bottleneck analysis
 - **GPU Execution Model**: [GPU Execution Model and Thread Optimization](gpu-execution-model.md) -- SIMT, warp, and occupancy fundamentals
 - **Hopper Hands-On**: [Hopper SM90 Optimization Hands-On](../nvidia/hopper/hands-on/README.md) -- TMA, WGMMA, warp specialization
-- **Blackwell Hands-On**: [Blackwell SM100 Optimization Hands-On](../nvidia/blackwell/hands-on/README.md) -- tcgen05, TMEM, CLC
+- **Blackwell Hands-On**: [Blackwell SM100 Optimization Hands-On](../nvidia/blackwell/features/README.md) -- tcgen05, TMEM, CLC
 - **AMD Inference Optimization**: [AMD General Optimization](../amd/common/README.md) -- MFMA, LDS, GEMM tuning
 - **CuTeDSL**: [CuTeDSL Programming Model](../nvidia/common/cutedsl/README.md) -- The DSL framework used by FA4

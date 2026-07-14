@@ -11,6 +11,9 @@ CDNA, or Blackwell-GeForce (sm120) results.
 
 Examples:
     python3 gpu-wiki/scripts/query.py "bank conflict" --arch blackwell
+    python3 gpu-wiki/scripts/query.py "gemm" --arch b200 --vendor nvidia --section kernels --kernel-type gemm
+    python3 gpu-wiki/scripts/query.py --arch b200 --operator gdn --section kernels
+    python3 gpu-wiki/scripts/query.py --arch b200 --section optimization --symptom pipeline-stalls
     python3 gpu-wiki/scripts/query.py "flash attention" --arch cdna3 --dsl flydsl
     python3 gpu-wiki/scripts/query.py --list-arch
 
@@ -54,6 +57,84 @@ DSL_ALIASES = {
     "gluon": {"gluon"},
     "triton": {"triton"},
     "cuda": {"cuda"},
+}
+
+# `--symptom` consumes the controlled vocabulary emitted by
+# `tools/classify_ncu.py` in a profiler `summary.txt`.  A symptom is a diagnosis
+# card, not a fuzzy keyword: it therefore selects the card by its stable file
+# name.  The card itself owns the candidate techniques and links to open next.
+SYMPTOMS = {
+    "compute-bound",
+    "low-sm-utilization",
+    "memory-bound",
+    "pipeline-stalls",
+    "register-pressure",
+    "tail-effect",
+    "moe-load-imbalance",
+}
+
+# Kernel type deliberately uses only stable path/title vocabulary, never body
+# text.  This keeps an attention page that merely mentions GEMM out of a GEMM
+# implementation search.  Profiling diagnosis is intentionally a separate
+# `--symptom` query because strategy cards usually do not name one operator.
+KERNEL_TYPE_ALIASES = {
+    "gemm": {"gemm", "matmul", "matrix multiplication"},
+    "gemv": {"gemv", "matrix vector"},
+    "attention": {"attention", "flashmla", "mla"},
+    "moe": {"moe", "mixture of experts", "expert"},
+    "norm": {"norm", "rmsnorm", "layernorm"},
+    "reduction": {"reduction", "softmax"},
+}
+KERNEL_TYPE_INPUT_ALIASES = {
+    "matmul": "gemm",
+    "matrix-multiply": "gemm",
+    "matrix-multiplication": "gemm",
+    "mixture-of-experts": "moe",
+    "layer-norm": "norm",
+    "rms-norm": "norm",
+}
+
+
+@dataclass(frozen=True)
+class Operator:
+    """A stable operator identifier, user spellings, and title/path markers."""
+
+    aliases: frozenset[str]
+    markers: frozenset[str]
+
+
+# `--operator` is more specific than `--kernel-type`.  Match only title/path
+# vocabulary, so an acronym such as GDN maps to its canonical page without
+# letting unrelated body-text mentions become false positives.
+OPERATORS = {
+    "gemm": Operator(frozenset({"gemm", "matmul", "matrix-multiplication"}),
+                     frozenset({"gemm", "matmul", "matrix multiplication"})),
+    "gemv": Operator(frozenset({"gemv", "matrix-vector"}), frozenset({"gemv", "matrix vector"})),
+    "grouped-gemm": Operator(frozenset({"grouped-gemm", "grouped-matmul"}),
+                             frozenset({"grouped gemm"})),
+    "gated-dual-gemm": Operator(frozenset({"gated-dual-gemm", "gate-up-gemm"}),
+                                 frozenset({"gated dual gemm"})),
+    "moe": Operator(frozenset({"moe", "mixture-of-experts", "fused-moe"}),
+                    frozenset({"moe", "mixture of experts", "expert"})),
+    "flash-attention": Operator(frozenset({"flash-attention", "flashattention", "fa", "fa4"}),
+                                frozenset({"flash attention", "flashattention"})),
+    "paged-attention": Operator(frozenset({"paged-attention", "paged-attn"}),
+                                frozenset({"paged attention", "paged-attention"})),
+    "mla": Operator(frozenset({"mla", "flashmla", "multi-head-latent-attention"}),
+                    frozenset({"mla", "flashmla", "multi-head latent attention", "multi latent attention"})),
+    "sparse-mla": Operator(frozenset({"sparse-mla", "sparse-multi-latent-attention"}),
+                           frozenset({"sparse mla", "sparse multi"})),
+    "gdn": Operator(frozenset({"gdn", "gated-delta-net", "gateddeltanet"}),
+                    frozenset({"gated delta net", "gateddeltanet"})),
+    "nsa": Operator(frozenset({"nsa", "native-sparse-attention"}),
+                    frozenset({"native sparse attention"})),
+    "mamba": Operator(frozenset({"mamba", "mamba2", "ssm"}),
+                       frozenset({"mamba", "state space model", "ssm"})),
+    "norm": Operator(frozenset({"norm", "rmsnorm", "layernorm", "rms-norm", "layer-norm"}),
+                     frozenset({"rmsnorm", "rms norm", "layernorm", "layer norm"})),
+    "softmax": Operator(frozenset({"softmax", "softmax-reduce"}), frozenset({"softmax"})),
+    "conv": Operator(frozenset({"conv", "convolution"}), frozenset({"conv", "convolution"})),
+    "allreduce": Operator(frozenset({"allreduce", "all-reduce"}), frozenset({"allreduce", "all reduce"})),
 }
 
 # non-canonical spellings a user might pass on the command line
@@ -120,6 +201,70 @@ def matches_dimension(page: "Page", aliases: dict[str, set[str]], requested: set
     return bool(present & requested)
 
 
+def normalize_path_selector(value: str) -> tuple[str, ...]:
+    """Normalize a --section selector into docs-relative path components."""
+    parts = tuple(part.lower() for part in value.strip("/ ").split("/") if part)
+    if not parts or any(part in {".", ".."} for part in parts):
+        raise ValueError(value)
+    return parts
+
+
+def has_path_selector(page: "Page", selector: tuple[str, ...]) -> bool:
+    """Match a selector as one contiguous sequence of path components."""
+    width = len(selector)
+    return any(page.segments[index:index + width] == selector
+               for index in range(len(page.segments) - width + 1))
+
+
+def matches_sections(page: "Page", include: tuple[tuple[str, ...], ...],
+                     exclude: tuple[tuple[str, ...], ...]) -> bool:
+    """Include any requested knowledge role/path and exclude explicit paths."""
+    if exclude and any(has_path_selector(page, selector) for selector in exclude):
+        return False
+    return not include or any(has_path_selector(page, selector) for selector in include)
+
+
+def page_symptoms(page: "Page") -> set[str]:
+    """Return profiler symptoms represented by a stable diagnosis-card filename."""
+    stem = page.filename.removesuffix(".md")
+    return {stem} if stem in SYMPTOMS else set()
+
+
+def resolve_kernel_type(value: str) -> Optional[str]:
+    value = value.lower().replace("_", "-")
+    if value in KERNEL_TYPE_ALIASES:
+        return value
+    return KERNEL_TYPE_INPUT_ALIASES.get(value)
+
+
+def page_kernel_types(page: "Page") -> set[str]:
+    """Classify kernel types from title/path only, avoiding body-text false positives."""
+    stable_text = f"{page.title.lower()} {page.keyword_blob}"
+    return {
+        kernel_type
+        for kernel_type, terms in KERNEL_TYPE_ALIASES.items()
+        if any(term in stable_text for term in terms)
+    }
+
+
+def resolve_operator(value: str) -> Optional[str]:
+    value = value.lower().replace("_", "-")
+    for operator, definition in OPERATORS.items():
+        if value == operator or value in definition.aliases:
+            return operator
+    return None
+
+
+def page_operators(page: "Page") -> set[str]:
+    """Return specific operators present in a page's stable title/path text."""
+    stable_text = f"{page.title.lower()} {page.keyword_blob}"
+    return {
+        operator
+        for operator, definition in OPERATORS.items()
+        if any(marker in stable_text for marker in definition.markers)
+    }
+
+
 def load_pages(docs_dir: Path) -> list[Page]:
     pages: list[Page] = []
     for path in sorted(docs_dir.rglob("*.md")):
@@ -180,14 +325,30 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--arch", action="append", default=[], help="Restrict to an architecture (repeatable).")
     parser.add_argument("--vendor", action="append", default=[], help="Restrict to nvidia / amd (repeatable).")
     parser.add_argument("--dsl", action="append", default=[], help="Restrict to cutedsl / flydsl / gluon / triton / cuda.")
+    parser.add_argument("--section", action="append", default=[],
+                        help="Keep docs whose path contains this role/path (repeatable; e.g. kernels, optimization).")
+    parser.add_argument("--exclude-section", action="append", default=[],
+                        help="Drop docs whose path contains this role/path (repeatable; e.g. articles).")
+    parser.add_argument("--kernel-type", action="append", default=[],
+                        help="Keep pages with a stable kernel type in title/path (e.g. gemm, attention, moe).")
+    parser.add_argument("--operator", action="append", default=[],
+                        help="Keep pages for a specific operator (e.g. gdn, flash-attention, paged-attention).")
+    parser.add_argument("--symptom", action="append", default=[],
+                        help="Select diagnosis cards from profiler SYMPTOMS (repeatable).")
     parser.add_argument("--any", dest="match_any", action="store_true", help="Match any keyword (default: all).")
     parser.add_argument("--limit", type=int, default=20, help="Maximum results to print.")
     parser.add_argument("--list-arch", action="store_true", help="List known architecture values and exit.")
+    parser.add_argument("--list-operators", action="store_true", help="List known operator identifiers and exit.")
     args = parser.parse_args(argv)
 
     if args.list_arch:
         for value, tokens in ARCH_ALIASES.items():
             print(f"{value}: {', '.join(sorted(tokens))}")
+        return 0
+    if args.list_operators:
+        for operator, definition in sorted(OPERATORS.items()):
+            aliases = ", ".join(sorted(alias for alias in definition.aliases if alias != operator))
+            print(f"{operator}: {aliases}" if aliases else operator)
         return 0
 
     docs_dir = Path(args.root) / "docs"
@@ -204,6 +365,33 @@ def main(argv: Optional[list[str]] = None) -> int:
         requested_arch.add(resolved)
     requested_vendor = {v.lower() for v in args.vendor}
     requested_dsl = {v.lower() for v in args.dsl}
+    try:
+        requested_sections = tuple(normalize_path_selector(value) for value in args.section)
+        excluded_sections = tuple(normalize_path_selector(value) for value in args.exclude_section)
+    except ValueError as exc:
+        print(f"ERROR invalid-section {exc.args[0]}: use a relative docs path or path segment", file=sys.stderr)
+        return 1
+    requested_symptoms = {value.lower().replace("_", "-") for value in args.symptom}
+    unknown_symptoms = requested_symptoms - SYMPTOMS
+    if unknown_symptoms:
+        print("ERROR unknown-symptom " + ", ".join(sorted(unknown_symptoms)) +
+              ": valid values are " + ", ".join(sorted(SYMPTOMS)), file=sys.stderr)
+        return 1
+    requested_kernel_types: set[str] = set()
+    for value in args.kernel_type:
+        resolved = resolve_kernel_type(value)
+        if resolved is None:
+            print("ERROR unknown-kernel-type " + value + ": valid values are " +
+                  ", ".join(sorted(KERNEL_TYPE_ALIASES)), file=sys.stderr)
+            return 1
+        requested_kernel_types.add(resolved)
+    requested_operators: set[str] = set()
+    for value in args.operator:
+        resolved = resolve_operator(value)
+        if resolved is None:
+            print("ERROR unknown-operator " + value + ": try --list-operators", file=sys.stderr)
+            return 1
+        requested_operators.add(resolved)
 
     pages = load_pages(docs_dir)
     scoped = [
@@ -212,6 +400,10 @@ def main(argv: Optional[list[str]] = None) -> int:
         if matches_dimension(page, ARCH_ALIASES, requested_arch)
         and matches_dimension(page, VENDOR_ALIASES, requested_vendor)
         and matches_dimension(page, DSL_ALIASES, requested_dsl)
+        and matches_sections(page, requested_sections, excluded_sections)
+        and (not requested_symptoms or bool(page_symptoms(page) & requested_symptoms))
+        and (not requested_kernel_types or bool(page_kernel_types(page) & requested_kernel_types))
+        and (not requested_operators or bool(page_operators(page) & requested_operators))
     ]
 
     filters = []
@@ -221,6 +413,16 @@ def main(argv: Optional[list[str]] = None) -> int:
         filters.append(f"vendor={','.join(sorted(requested_vendor))}")
     if requested_dsl:
         filters.append(f"dsl={','.join(sorted(requested_dsl))}")
+    if requested_sections:
+        filters.append("section=" + ",".join("/".join(value) for value in requested_sections))
+    if excluded_sections:
+        filters.append("exclude-section=" + ",".join("/".join(value) for value in excluded_sections))
+    if requested_symptoms:
+        filters.append(f"symptom={','.join(sorted(requested_symptoms))}")
+    if requested_kernel_types:
+        filters.append(f"kernel-type={','.join(sorted(requested_kernel_types))}")
+    if requested_operators:
+        filters.append(f"operator={','.join(sorted(requested_operators))}")
     scope_desc = "; ".join(filters) if filters else "no filter"
     print(f"scope: {scope_desc} — {len(scoped)}/{len(pages)} pages in scope")
 

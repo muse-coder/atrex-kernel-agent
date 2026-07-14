@@ -217,6 +217,16 @@ complementary optimization axes with AMD FlyDSL chunk-GDN.
 
 **Interpretation**: FlashInfer/FlashQLA-style "fusion" is not simply about reducing shared staging. In SM120 CuTeDSL's GDN chunk-forward, reading V RHS directly via global scalar load moves the bottleneck to the RHS load critical path; V31's effective fusion point is pushing `exp_decay[t]` to the `v_new[t,v]` side, removing the K-decay scratch, and using a transposed LDSM atom to absorb the transposed `sK` view. V113's newly effective point is local B-fragment reuse, not preprocess cache or full TMA fusion.
 
+#### Difference 9: Thread Block Clusters vs Cluster Launch Control
+
+| Architecture | Cluster capability |
+|------|------|
+| Hopper (SM90) | Introduced Thread Block Clusters, including cluster launch attributes, distributed shared memory, and cluster synchronization; it does **not** support CLC |
+| Blackwell (SM100) | Introduced Cluster Launch Control (CLC), allowing a running cluster to asynchronously cancel a not-yet-launched cluster and take over its cluster coordinates |
+| Blackwell GeForce (SM120) | Also satisfies the PTX `sm_100`-or-higher CLC requirement, although SM100 TMEM, UMMA, 2SM-MMA, and library schedule assumptions do not automatically transfer |
+
+**Impact**: Do not infer CLC support from the presence of Thread Block Clusters. Hopper persistent kernels must use static-stride or software dynamic scheduling; Blackwell kernels can use `clusterlaunchcontrol.try_cancel` for hardware-assisted work redistribution. See [Hopper/Blackwell Thread Block Clusters](nvidia/common/thread-block-cluster.md) and [Blackwell Cluster Launch Control](nvidia/blackwell/features/clc.md).
+
 ### 🟢 Content Duplication (Not a Conflict, but Redundant)
 
 | Duplicated Content | Files Involved | Suggestion |

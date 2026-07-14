@@ -2,7 +2,7 @@
 
 QuACK (by Tri Dao) is a high-performance GEMM library built on CuTeDSL, with the following core features:
 
-**Last updated**: 2026-06-30
+**Last updated**: 2026-07-14
 
 - **Multi-architecture unified interface**: The same `gemm()` API automatically dispatches to SM90 (Hopper) / SM100 (Blackwell) / SM120 (Blackwell GeForce)
 - **Composable Epilogue**: Componentized epilogue operations (bias, activation, normalization, reduction) via `EpiOp`, freely composable into fused kernels
@@ -118,7 +118,7 @@ For FP8 inputs, the `fp8_slow_accum` mode can be selected: perform one FP32 redu
 
 ### 3. SM100 Blackwell GEMM (`GemmSm100`)
 
-SM100 GEMM is a comprehensive upgrade over SM90, introducing TMEM (Tensor Memory) and CLC (Cooperative Launch Control).
+SM100 GEMM is a comprehensive upgrade over SM90, introducing TMEM (Tensor Memory) and CLC (Cluster Launch Control).
 
 **tcgen05 UMMA**
 
@@ -135,7 +135,7 @@ self.cta_group = tcgen05.CtaGroup.TWO if self.use_2cta_instrs else tcgen05.CtaGr
 
 **CLC Dynamic Persistent Scheduling**
 
-SM100 uses CLC (Cooperative Launch Control) by default for persistent scheduling, replacing SM90's static/dynamic modes:
+SM100 uses CLC (Cluster Launch Control) by default for persistent scheduling, replacing SM90's static/dynamic modes:
 
 ```python
 # tile_scheduler.py
@@ -637,7 +637,7 @@ if group_id % 2 == 1:  # serpentine order
 - `VarlenMTileScheduler`: Supports variable-length M dimensions (e.g., batched attention), using `cu_seqlens_m` + warp-level prefix sum Tracy for efficient tile allocation
 - `TriangularTileScheduler`: Used for triangular matrix operations (e.g., dKdV of causal attention), processing only lower-triangular tiles
 
-See [SM100 CuTeDSL](../../blackwell/cutedsl/blackwell-cutedsl-sm100.md) for Blackwell-specific CuTeDSL programming details.
+See [SM100 CuTeDSL](../../blackwell/programming/cutedsl/blackwell-cutedsl-sm100.md) for Blackwell-specific CuTeDSL programming details.
 
 
 ## Related

@@ -7,6 +7,7 @@ Index for `nvidia/blackwell/kernels/`.
 | File | Description |
 |------|------|
 | [deepgemm.md](deepgemm.md) | DeepGEMM -- FP8 GEMM with Fine-Grained Scaling |
+| [distributed-gemm-allreduce.md](distributed-gemm-allreduce.md) | Distributed GEMM + AllReduce (Two-Shot) |
 | [flash-attention-4.md](flash-attention-4.md) | FlashAttention-4 |
 | [flashmla.md](flashmla.md) | FlashMLA -- Multi-head Latent Attention |
 | [fp8-block-scale-gemm.md](fp8-block-scale-gemm.md) | FP8 Block-Scale GEMM |
@@ -14,6 +15,7 @@ Index for `nvidia/blackwell/kernels/`.
 | [gated-delta-net.md](gated-delta-net.md) | Gated Delta Net -- Linear Attention |
 | [gated-dual-gemm.md](gated-dual-gemm.md) | Gated Dual GEMM |
 | [grouped-gemm.md](grouped-gemm.md) | Grouped GEMM for MoE |
+| [mla-decode.md](mla-decode.md) | Multi-Latent Attention decode |
 | [nsa.md](nsa.md) | Native Sparse Attention (NSA) |
 | [nvfp4-gemm.md](nvfp4-gemm.md) | NVFP4 GEMM -- 4-bit Floating Point Matrix Multiply |
 | [nvfp4-gemv.md](nvfp4-gemv.md) | NVFP4 Batched GEMV |

@@ -534,5 +534,5 @@ Must exceed the hardware's compute-to-bandwidth ratio (e.g., approximately 25.2 
 - [Triton Memory Access Optimization Patterns](hands-on/memory-access-optimization.md) — General techniques such as coalesced access and vectorization
 - [Persistent Kernel and Tile Scheduling](hands-on/persistent-kernel-tile-scheduling.md) — Scheduling strategies such as Stream-K
 - [NVIDIA General Optimization Documentation](../nvidia/common/) — NCU profiling, async copy, TMA, etc.
-- [Blackwell GEMM Optimization in Practice](../nvidia/blackwell/hands-on/) — Tensor Core optimization on SM100 architecture
-- [Hopper GEMM Optimization in Practice](../nvidia/blackwell/hands-on/) — TMA, WGMMA, warp specialization
+- [Blackwell GEMM Optimization in Practice](../nvidia/blackwell/features/) — Tensor Core optimization on SM100 architecture
+- [Hopper GEMM Optimization in Practice](../nvidia/blackwell/features/) — TMA, WGMMA, warp specialization

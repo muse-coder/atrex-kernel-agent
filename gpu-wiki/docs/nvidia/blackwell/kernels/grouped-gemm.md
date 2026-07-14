@@ -1,7 +1,7 @@
 # Grouped GEMM for MoE
 
 
-**Last updated**: 2026-06-30
+**Last updated**: 2026-07-14
 
 ## Overview
 
@@ -71,7 +71,8 @@ using Schedule = cutlass::gemm::KernelPtrArrayTmaWarpSpecialized1SmNvf4Sm100;
 
 // PtrArray mode: array of pointers to per-group A, B, C matrices
 // TMA handles variable-offset loads via per-group descriptors
-// CLC distributes tiles across groups dynamically
+// A CLC-backed scheduler can redistribute pending cluster IDs; scheduler
+// software maps each returned ID to a group and tile.
 
 using GemmKernel = cutlass::gemm::kernel::GemmGrouped<
     cutlass::gemm::GemmShape<128, 256, 128>,  // Tile shape
@@ -119,7 +120,10 @@ std::vector<TileInfo> build_tile_schedule(
 }
 ```
 
-### Dynamic Scheduling (CLC / Persistent Kernel)
+### Software Dynamic Scheduling Example
+
+The following code uses a global atomic counter, not CLC. It is the portable
+software alternative when a CLC-backed CUTLASS scheduler is unavailable:
 
 ```cpp
 // Persistent kernel with atomic tile counter
@@ -174,10 +178,10 @@ This reported 11.191us (~2us ahead of second place). It led to improvements in t
 
 ## Caveats
 
-- Expert load imbalance is the primary practical bottleneck (see [tail-effect](../patterns/tail-effect.md))
+- Expert load imbalance is the primary practical bottleneck (see [tail-effect](../optimization/tail-effect.md))
 - Small M per expert causes thin-GEMM inefficiency on tensor cores
 - Masked layout wastes compute on padding when M distribution is skewed
-- CLC dynamic scheduling adds hardware overhead vs static precomputed schedules
+- CLC scheduling adds an asynchronous request/response and software tile-decoding path; compare it with static scheduling on the target workload
 - TMA alignment (128 bytes) constrains minimum tile dimensions
 
 ## Sources

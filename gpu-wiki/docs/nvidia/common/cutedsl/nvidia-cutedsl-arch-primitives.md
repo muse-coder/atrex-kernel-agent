@@ -1,7 +1,7 @@
 # CuTeDSL Architecture Primitives (NVIDIA General)
 
 
-**Last updated**: 2026-06-30
+**Last updated**: 2026-07-14
 
 ## Thread/Block/Grid/Cluster Indexing
 
@@ -308,7 +308,9 @@ bits = popc(value)          # Population count
 
 ## Cluster Launch Control (CLC)
 
-SM90+ supports dynamically canceling unlaunched clusters:
+Blackwell SM100+ supports dynamically canceling unlaunched clusters. Hopper
+SM90 introduced Thread Block Clusters, but does not support Cluster Launch
+Control:
 
 ```python
 from cutlass.cute.arch import issue_clc_query, clc_response

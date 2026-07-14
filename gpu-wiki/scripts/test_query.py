@@ -10,6 +10,27 @@ if str(SCRIPTS_DIR) not in sys.path:
 import query  # noqa: E402
 
 
+# Every Blackwell operator page in kernels/ must have at least one stable
+# --operator route.  Adding or removing a page requires updating this inventory,
+# making coverage an explicit reviewable contract rather than best effort.
+BLACKWELL_KERNEL_OPERATORS = {
+    "deepgemm.md": {"gemm"},
+    "distributed-gemm-allreduce.md": {"gemm", "allreduce"},
+    "flash-attention-4.md": {"flash-attention"},
+    "flashmla.md": {"mla"},
+    "fp8-block-scale-gemm.md": {"gemm"},
+    "fused-moe.md": {"moe"},
+    "gated-delta-net.md": {"gdn"},
+    "gated-dual-gemm.md": {"gated-dual-gemm", "gemm"},
+    "grouped-gemm.md": {"grouped-gemm", "gemm"},
+    "mla-decode.md": {"mla"},
+    "nsa.md": {"nsa"},
+    "nvfp4-gemm.md": {"gemm"},
+    "nvfp4-gemv.md": {"gemv"},
+    "sparse-mla.md": {"sparse-mla", "mla"},
+}
+
+
 def make_page(rel, title="", summary="", body=""):
     return query.Page(
         rel_path=rel,
@@ -69,6 +90,41 @@ class DimensionTests(unittest.TestCase):
         self.assertIsNone(query.resolve_arch("nonsense"))
 
 
+class KnowledgeRoleTests(unittest.TestCase):
+    def test_section_selector_matches_a_path_component(self):
+        kernel = make_page("nvidia/blackwell/kernels/nvfp4-gemm.md")
+        self.assertTrue(query.matches_sections(kernel, (("kernels",),), ()))
+        self.assertFalse(query.matches_sections(kernel, (("optimization",),), ()))
+
+    def test_section_selector_accepts_a_full_path_fragment(self):
+        optimization = make_page("nvidia/blackwell/optimization/compute-bound.md")
+        selector = query.normalize_path_selector("nvidia/blackwell/optimization")
+        self.assertTrue(query.matches_sections(optimization, (selector,), ()))
+
+    def test_exclude_section_wins_over_include(self):
+        article = make_page("nvidia/blackwell/articles/gemm-analysis.md")
+        self.assertFalse(query.matches_sections(article, (), (("articles",),)))
+
+    def test_symptom_is_identified_by_diagnosis_card_filename(self):
+        symptom = make_page("nvidia/blackwell/optimization/pipeline-stalls.md")
+        ordinary = make_page("nvidia/blackwell/optimization/pipeline-stages.md")
+        self.assertEqual({"pipeline-stalls"}, query.page_symptoms(symptom))
+        self.assertEqual(set(), query.page_symptoms(ordinary))
+
+    def test_kernel_type_uses_title_and_path_not_body(self):
+        gemm = make_page("nvidia/blackwell/kernels/deepgemm.md", title="DeepGEMM")
+        attention = make_page("nvidia/blackwell/kernels/flashmla.md", title="FlashMLA",
+                              body="This attention kernel contains GEMM operations.")
+        self.assertIn("gemm", query.page_kernel_types(gemm))
+        self.assertNotIn("gemm", query.page_kernel_types(attention))
+        self.assertIn("attention", query.page_kernel_types(attention))
+
+    def test_kernel_type_aliases(self):
+        self.assertEqual("gemm", query.resolve_kernel_type("matmul"))
+        self.assertEqual("moe", query.resolve_kernel_type("mixture-of-experts"))
+        self.assertIsNone(query.resolve_kernel_type("nonsense"))
+
+
 class ScoringTests(unittest.TestCase):
     def test_title_match_scores_higher_than_body(self):
         page = make_page("a.md", title="Bank conflict swizzle", summary="s", body="body text")
@@ -115,6 +171,39 @@ class EndToEndTests(unittest.TestCase):
         self.assertEqual(0, query.main(["moe gemm", "--root", str(root), "--vendor", "nvidia"]))
         page = query.load_pages(root / "docs")[0]
         self.assertGreater(query.score_page(page, ["moe", "gemm"], match_any=False), 0)
+
+    def test_section_and_symptom_filters_select_one_diagnosis_card(self):
+        root = self.make_wiki()
+        self.write(root, "nvidia/blackwell/optimization/pipeline-stalls.md",
+                   "# Pipeline stalls\n\nTMA pipeline diagnosis.\n")
+        self.write(root, "nvidia/blackwell/optimization/pipeline-stages.md",
+                   "# Pipeline stages\n\nPipeline tuning.\n")
+        self.assertEqual(0, query.main([
+            "--root", str(root), "--arch", "b200", "--section", "optimization",
+            "--symptom", "pipeline_stalls",
+        ]))
+
+    def test_kernel_type_filter_excludes_body_only_mentions(self):
+        root = self.make_wiki()
+        self.write(root, "nvidia/blackwell/kernels/deepgemm.md", "# DeepGEMM\n\nGEMM kernel.\n")
+        self.write(root, "nvidia/blackwell/kernels/flashmla.md", "# FlashMLA\n\nAttention uses GEMM.\n")
+        self.assertEqual(0, query.main([
+            "gemm", "--root", str(root), "--arch", "b200", "--section", "kernels",
+            "--kernel-type", "gemm",
+        ]))
+
+    def test_every_blackwell_kernel_page_has_a_registered_operator(self):
+        docs = SCRIPTS_DIR.parent / "docs"
+        pages = query.load_pages(docs)
+        blackwell_kernels = {
+            Path(page.rel_path).name: page
+            for page in pages
+            if Path(page.rel_path).parent.as_posix() == "nvidia/blackwell/kernels"
+        }
+        self.assertEqual(set(BLACKWELL_KERNEL_OPERATORS), set(blackwell_kernels))
+        for filename, expected_operators in BLACKWELL_KERNEL_OPERATORS.items():
+            with self.subTest(filename=filename):
+                self.assertTrue(expected_operators & query.page_operators(blackwell_kernels[filename]))
 
 
 if __name__ == "__main__":

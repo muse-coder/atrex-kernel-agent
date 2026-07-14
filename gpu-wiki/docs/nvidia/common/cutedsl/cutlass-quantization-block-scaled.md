@@ -381,6 +381,6 @@ union type_erased_dynamic_float4_unpacksmem_t {
 ## Related
 
 - [CUTLASS GEMM Optimization](cutlass-gemm-optimization.md) — GEMM tiling and pipeline strategies
-- [SM100 CuTeDSL](../../blackwell/cutedsl/blackwell-cutedsl-sm100.md) — Blackwell architecture CuTeDSL programming
+- [SM100 CuTeDSL](../../blackwell/programming/cutedsl/blackwell-cutedsl-sm100.md) — Blackwell architecture CuTeDSL programming
 - [Pipeline Patterns](cutedsl-pipeline-patterns.md) — TMA pipeline and warp specialization
 - [Epilogue Visitor Tree](cutlass-epilogue-visitor-tree.md) — Includes block-scaled output support

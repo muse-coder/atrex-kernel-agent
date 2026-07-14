@@ -488,6 +488,6 @@ Evaluation order (depth-first postorder traversal):
 ## Related
 
 - [CUTLASS GEMM Optimization](cutlass-gemm-optimization.md) -- mainloop design and tile strategies
-- [SM100 CuTeDSL](../../blackwell/cutedsl/blackwell-cutedsl-sm100.md) -- Blackwell TMEM epilogue
+- [SM100 CuTeDSL](../../blackwell/programming/cutedsl/blackwell-cutedsl-sm100.md) -- Blackwell TMEM epilogue
 - [Pipeline Patterns](cutedsl-pipeline-patterns.md) -- epilogue pipeline stages
 - [Quantization & Block-Scaled GEMM](cutlass-quantization-block-scaled.md) -- block-scaled input MMA

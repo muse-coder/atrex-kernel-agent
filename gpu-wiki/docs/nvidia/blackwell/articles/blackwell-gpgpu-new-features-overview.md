@@ -3,7 +3,7 @@
 A summary of Blackwell compute GPU (SM100) architecture updates derived from analysis of CUTLASS, PTX documentation, and Hopper feature comparisons, combined with information disclosed at GTC 2025.
 
 
-**Last updated**: 2026-06-30
+**Last updated**: 2026-07-14
 
 ---
 
@@ -58,7 +58,12 @@ Note: NVIDIA has not provided examples of DSMEM-optimized GEMM — unclear wheth
 
 ## 4. Cluster Launch Control (CLC)
 
-Cluster Launch Control first appeared with CUDA 12.8 / CUTLASS 3.8. It upgrades Hopper's Static Tile Scheduling to **Dynamic Tile Scheduling**: previously, SM context switches caused severe tail effects under static scheduling. The core PTX instruction is `clusterlaunchcontrol`, with `UGETNEXTWORKID` as the corresponding SASS instruction.
+Cluster Launch Control was introduced in PTX ISA 8.6 and requires `sm_100` or
+higher. The core instruction, `clusterlaunchcontrol.try_cancel`, asynchronously
+attempts to cancel a cluster from the same grid that has not started. On
+success, the running cluster receives the first CTA ID of the canceled cluster
+and can take over its work. This enables dynamic redistribution without
+preempting already-running clusters; see [CLC Hardware Semantics](../features/clc.md).
 
 ---
 

@@ -3,7 +3,7 @@
 Technical analysis of the GTC 2026 presentation demonstrating progressive GEMM optimization on B200 GPU using CUTLASS Python, from baseline to near-peak Tensor Core throughput.
 
 
-**Last updated**: 2026-06-30
+**Last updated**: 2026-07-14
 
 ---
 
@@ -241,13 +241,16 @@ Key finding: When K is small, epilogue dominates execution time; Warp Specializa
 | Feature | Legacy | Static Persistent | Dynamic Persistent |
 |---------|--------|-------------------|-------------------|
 | Save wave-switch overhead | No | Yes | Yes |
-| Preemption | No | No | Yes |
+| Adapts to pending-launch availability | No | No | Yes |
 | Load balancing | No | No | Yes |
 
 CLC enables dynamic scheduling:
-- Each SM can cancel unexecuted thread blocks
-- Idle SMs can "steal" tasks from busy SMs (work stealing)
+- A running cluster can cancel a cluster launch from the same grid that has not started
+- On success, it takes over the canceled cluster's coordinates
 - Adapts to runtime resource availability
+
+CLC does not preempt or migrate already-running CTAs. The reported speedups below
+belong to the presentation's multi-stream setup and are not universal CLC gains.
 
 **Multi-stream parallel scenario** (background kernel occupies 20 SMs):
 - 4K³: 1.36x | 8K³: 1.29x | 16K³: 1.34x

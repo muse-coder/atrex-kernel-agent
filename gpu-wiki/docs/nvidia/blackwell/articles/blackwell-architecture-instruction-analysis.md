@@ -3,7 +3,7 @@
 A comprehensive analysis of Blackwell (B200, SM100) architecture features, instruction set, and GEMM design — covering hardware specifications, tcgen05 ISA, Tensor Memory, SMEM layout, and CUTLASS tiling strategies.
 
 
-**Last updated**: 2026-06-30
+**Last updated**: 2026-07-14
 
 ---
 
@@ -76,9 +76,15 @@ virtual Status launch(
 
 CUTLASS designed persistent kernels for Hopper GEMM (persistent WASP pingpong/cooperative kernels). These execute CTAs in waves for better wave quantization handling and latency hiding (especially pingpong mode for prologue/epilogue).
 
-Hopper uses **static scheduling**: tiles are mapped to SMs at kernel launch and never migrated. If other kernels preempt SMs, the GPU does not reschedule displaced work tiles, causing severe wave quantization effects (low tail-stage SM utilization).
+Hopper persistent GEMM schedulers commonly use **static scheduling**: workers
+advance through fixed tile sequences and cannot adapt that assignment when
+concurrent work changes resource availability, which can worsen load imbalance
+and final-wave utilization.
 
-Blackwell introduces **dynamic scheduling** (via `clusterlaunchcontrol` PTX instruction): the scheduler can cancel mappings and reschedule preempted work tiles to SMs that finish early, minimizing wave quantization effects.
+Blackwell introduces **dynamic scheduling** through
+`clusterlaunchcontrol.try_cancel`: a running cluster can cancel the launch of a
+cluster from the same grid that has not started, then process the canceled
+cluster's coordinates. CLC does not preempt or migrate already-running work.
 
 ---
 

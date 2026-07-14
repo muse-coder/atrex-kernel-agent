@@ -433,7 +433,7 @@ Warp assignment: 0x12'3333'3333'4444
 ### Related Documentation
 
 - [CUTLASS GEMM Optimization](cutlass-gemm-optimization.md)
-- [SM100 CuTeDSL Programming](../../blackwell/cutedsl/blackwell-cutedsl-sm100.md)
+- [SM100 CuTeDSL Programming](../../blackwell/programming/cutedsl/blackwell-cutedsl-sm100.md)
 - CUTLASS Programming Model
 
 

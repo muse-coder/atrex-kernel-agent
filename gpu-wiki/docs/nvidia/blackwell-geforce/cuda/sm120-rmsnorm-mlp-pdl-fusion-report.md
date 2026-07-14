@@ -127,6 +127,6 @@ These are new kernel/dataflow problems, not small PDL placement tweaks.
 - Pitfalls:
   [sm120-rmsnorm-mlp-pdl-pitfalls.md](pitfalls/sm120-rmsnorm-mlp-pdl-pitfalls.md)
 - General Blackwell PDL card:
-  [pdl-gdc.md](../../blackwell/hardware/pdl-gdc.md)
+  [pdl-gdc.md](../../blackwell/features/pdl-gdc.md)
 - Triton RMSNorm/GDN post-processing report:
   [sm120-fused-rmsnorm-gated-bf16-optimization.md](../triton/sm120-fused-rmsnorm-gated-bf16-optimization.md)

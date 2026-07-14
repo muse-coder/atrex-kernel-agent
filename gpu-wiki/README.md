@@ -4,7 +4,7 @@ This source wiki does not define Atrex Server, CLI, task runtime input/output fi
 
 **Core Usage**: Start from this README, choose the smallest relevant directory, then read the linked Markdown or source files directly. Use any available file-reading and text-search tools; the wiki itself does not require a specific product or runtime.
 
-**Other entry points**: flat catalog of every page → [`docs/index.md`](docs/index.md); maintenance schema and Ingest/Query/Lint operations → [`CLAUDE.md`](CLAUDE.md); change history → [`log.md`](log.md); architecture-scoped search → `python3 gpu-wiki/scripts/query.py "<keywords>" --arch <blackwell|hopper|cdna3|cdna4|...>` (restricts to one architecture and never leaks a competing one; `--vendor`/`--dsl` narrow further, `--list-arch` lists values).
+**Other entry points**: flat catalog of every page → [`docs/index.md`](docs/index.md); maintenance schema and Ingest/Query/Lint operations → [`CLAUDE.md`](CLAUDE.md); change history → [`log.md`](log.md); architecture-scoped search → `python3 gpu-wiki/scripts/query.py "<keywords>" --arch <blackwell|hopper|cdna3|cdna4|...>` (restricts to one architecture and never leaks a competing one; `--vendor`/`--dsl` narrow further; `--list-arch` and `--list-operators` list controlled values).
 
 ## Overall Architecture
 
@@ -25,6 +25,45 @@ This source wiki does not define Atrex Server, CLI, task runtime input/output fi
 ## Search Priority Guidelines
 
 For GPU-kernel work, expand layer by layer; do not load everything at once.
+
+### Symptom-Driven Retrieval
+
+For an optimization task, first profile the kernel. Use the exact controlled
+values on the profiler's `SYMPTOMS:` line with `query.py --symptom`; do not turn
+the raw metric names into broad keyword searches. `--section` selects the role
+of the knowledge to retrieve, while `--exclude-section articles` keeps long-form
+reference material out of an implementation search.
+
+```bash
+# Find Blackwell GEMM implementations and examples.
+python3 gpu-wiki/scripts/query.py "gemm" --arch b200 --vendor nvidia \
+  --operator gemm --section kernels --section programming --exclude-section articles
+
+# Operator aliases resolve canonical pages without relying on full-text spelling.
+python3 gpu-wiki/scripts/query.py --arch b200 --vendor nvidia \
+  --operator gdn --section kernels
+python3 gpu-wiki/scripts/query.py --arch b200 --vendor nvidia \
+  --operator flash-attention --section kernels
+
+# Then retrieve the one diagnosis card indicated by profiling.
+python3 gpu-wiki/scripts/query.py --arch b200 --vendor nvidia \
+  --section optimization --symptom pipeline-stalls
+
+# Read the supporting Blackwell hardware/programming mechanism.
+python3 gpu-wiki/scripts/query.py "tcgen05 tmem" --arch b200 --vendor nvidia \
+  --section features --section programming --exclude-section articles
+```
+
+Valid symptoms are `compute-bound`, `low-sm-utilization`, `memory-bound`,
+`pipeline-stalls`, `register-pressure`, `tail-effect`, and
+`moe-load-imbalance`. Use multiple `--section` or `--symptom` flags as OR within
+that category; filters across categories compose as AND. `--kernel-type` uses
+only a page's title and path (`gemm`, `gemv`, `attention`, `moe`, `norm`, or
+`reduction`), preventing body-text mentions from polluting an operator search.
+For a named operator, prefer `--operator`: run `query.py --list-operators` for
+the supported canonical names and aliases. A zero-result operator query is a
+knowledge-gap signal, not permission to substitute a nearby operator (for
+example, Blackwell currently has no Paged Attention operator page).
 
 | Priority | Tier | Where |
 |--------|------|-------|
@@ -47,8 +86,7 @@ docs/
     ├── common/              cross-arch: ptx/  profiling/  cutedsl/ (CUTLASS/CuTe fundamentals)
     │                        gluon/  triton/  hardware-specs/  + general theory cards
     ├── hopper/        (sm90)  cutedsl/  gluon/  converter/  hands-on/
-    ├── blackwell/     (sm100) hardware/ techniques/ kernels/ patterns/ languages/ migration/
-    │                          hands-on/  articles/  cutedsl/  gluon/  triton/
+    ├── blackwell/     (sm100) features/  optimization/  programming/  kernels/  articles/
     └── blackwell-geforce/ (sm120) cutedsl/  cuda/  triton/
 ```
 
@@ -58,7 +96,7 @@ docs/
 |-----|-------|-------|
 | [`nvidia/common/`](docs/nvidia/common/) | Cross-arch (not tied to one GPU gen) | PTX ISA (`ptx/`), NCU/Nsight profiling (`profiling/`), CuTeDSL/CUTLASS fundamentals (`cutedsl/`), Gluon/Triton general notes, hardware-specs, general optimization theory cards |
 | [`nvidia/hopper/`](docs/nvidia/hopper/) | Hopper sm90 | CuTeDSL, Gluon, Triton→Gluon converter, non-DSL hands-on (TMA/WGMMA/mbarrier/warp-spec) |
-| [`nvidia/blackwell/`](docs/nvidia/blackwell/) | Blackwell datacenter sm100 (B200/B300) | structured knowledge tree (hardware/techniques/kernels/patterns/languages/migration), `hands-on/` (CuTeDSL examples), `articles/` (FA4/B300 deep-dives), CuTeDSL/Gluon, Triton pitfalls |
+| [`nvidia/blackwell/`](docs/nvidia/blackwell/) | Blackwell datacenter sm100 (B200/B300) | feature-centric pages (`features/`), cross-feature methods and diagnosis (`optimization/`), language/DSL material (`programming/`), operators (`kernels/`), and long-form analysis (`articles/`) |
 | [`nvidia/blackwell-geforce/`](docs/nvidia/blackwell-geforce/) | Blackwell GeForce / RTX PRO sm120 | CuTeDSL, CUDA, Triton (each with `pitfalls/`): NVFP4 GEMM/GEMV, GDN chunk-fwd/decode, MoE data-prep, RMSNorm-MLP PDL |
 
 ### amd/ and generic/
@@ -136,4 +174,3 @@ Consult as **P5 priority** — after exhausting `docs/` (P0–P4) and `reference
 |---|---|---|---|---|
 | **KernelWiki** | MIT HAN Lab (Song Han) | Production-grade kernel optimization patterns from 2179 PRs | NVIDIA Blackwell (SM100), Hopper (SM90) | Performance diagnostics, optimization pattern matching, production kernel reference |
 | **modern-gpu-programming-for-mlsys** | MLC-AI (Tianqi Chen) + CMU | Systematic GPU programming textbook: hardware → programming model → SOTA GEMM | NVIDIA Blackwell, Hopper, Ampere | Foundational learning, Roofline model, TMA pipeline, GEMM optimization theory |
-
