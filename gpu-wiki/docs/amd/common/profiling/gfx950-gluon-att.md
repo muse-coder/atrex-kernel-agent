@@ -182,21 +182,21 @@ sort -t',' -k6 -nr tt_test/stats_*.csv | head -20 > $OUTPUT_DIR/top_stall.csv
 rm -rf tt_test
 ```## Related Documentation
 
-- **General rocprofv3 Usage**: [AMD rocprofv3 Profiling Guide](../../common/rocprofv3-profiling-guide.md) — tracing, counter collection, output formats, and other general features
-- **CDNA3 Instruction-Level Analysis**: [CDNA3 rocprofv3 ATT Detailed Guide](../gfx942/profiling_guide.md)
+- **General rocprofv3 Usage**: [AMD rocprofv3 Profiling Guide](rocprofv3.md) — tracing, counter collection, output formats, and other general features
+- **CDNA3 Instruction-Level Analysis**: [CDNA3 rocprofv3 ATT Detailed Guide](gfx942-gluon-att.md)
 - **NVIDIA Counterpart**: [NCU Profiling Guide](../../../nvidia/common/profiling/ncu-profiling-guide.md) — complete NVIDIA Nsight Compute usage
 - **Prerequisite Knowledge**: [GPU Instruction-Level Optimization](../../../generic/gpu-instruction-optimization.md) — Roofline analysis principles
 
 
 ## Related
 
-- [chunk-GDN (Gated Delta Net) Optimization Summary](chunk_gdn_lessons.md)
-- [CDNA4 (gfx950) Generic ISA Optimization Checklist](common_optimizations.md)
-- [Fused Attention Optimization Guide](fused_attention.md)
-- [Standard GEMM / Batched GEMM Optimization Guide](matmul.md)
-- [MLA Decode Attention Optimization Guide](mla_decode.md)
-- [rocprofv3 Instruction-Level Profile Details](../gfx942/profiling_guide.md)
-- [Nsight Compute (ncu) Profiling Guide](../../../nvidia/hopper/gluon/profiling_guide.md)
+- [chunk-GDN (Gated Delta Net) Optimization Summary](../../gluon/gfx950/chunk_gdn_lessons.md)
+- [CDNA4 (gfx950) Generic ISA Optimization Checklist](../../gluon/gfx950/common_optimizations.md)
+- [Fused Attention Optimization Guide](../../gluon/gfx950/fused_attention.md)
+- [Standard GEMM / Batched GEMM Optimization Guide](../../gluon/gfx950/matmul.md)
+- [MLA Decode Attention Optimization Guide](../../gluon/gfx950/mla_decode.md)
+- [rocprofv3 Instruction-Level Profile Details](gfx942-gluon-att.md)
+- [Nsight Compute (ncu) Profiling Guide](../../../nvidia/common/profiling/hopper-gluon-ncu.md)
 - [NVIDIA Nsight Compute (NCU) Profiling Guide](../../../nvidia/common/profiling/ncu-profiling-guide.md)
-- [AMD rocprofv3 Profiling Guide](../../common/rocprofv3-profiling-guide.md)
+- [AMD rocprofv3 Profiling Guide](rocprofv3.md)
 - [Document Relationship Diagram](../../../RELATIONS.md)

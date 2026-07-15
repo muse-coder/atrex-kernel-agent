@@ -13,5 +13,5 @@ Index for `nvidia/hopper/gluon/`.
 | [matmul.md](matmul.md) | Standard GEMM / Batched GEMM Optimization Guide |
 | [optimization-guide.md](optimization-guide.md) | Gluon Kernel Performance Optimization Guide (NVIDIA Hopper) |
 | [pitfalls.md](pitfalls.md) | Hopper (sm_90) Practical Pitfall Experience Index |
-| [profiling_guide.md](profiling_guide.md) | Nsight Compute (ncu) Profiling Guide |
+| [NVIDIA profiling](../../common/profiling/README.md) | NCU workflow; use the Hopper/Gluon NCU guide |
 | [softmax_reduce.md](softmax_reduce.md) | Softmax / Reduction / Element-wise Optimization Guide |

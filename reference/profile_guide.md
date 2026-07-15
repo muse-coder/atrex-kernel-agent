@@ -1,11 +1,29 @@
 # Profile Tool Usage Guide
 
 > Source: gpu-wiki (`~/aka_kernel_opt/gpu-wiki/docs/`)
-> - AMD: `amd/common/rocprofv3-profiling-guide.md`, `amd/gluon/gfx942/profiling_guide.md`
-> - NVIDIA: `nvidia/profiling/ncu-profiling-guide.md`, `nvidia/gluon/sm90/profiling_guide.md`
+> - AMD: `amd/common/profiling/rocprofv3.md`, `amd/common/profiling/gfx942-gluon-att.md`
+> - NVIDIA: `nvidia/common/profiling/ncu-profiling-guide.md`, `nvidia/common/profiling/hopper-gluon-ncu.md`
 
 This guide consolidates profile tool usage for both AMD and NVIDIA platforms.
 All profiling evidence must come from these official tools 
+
+---
+
+## Unified Diagnosis Contract
+
+Both platform wrappers write these two files under `<output-dir>/` after
+collection. `summary.json` is the only machine-readable handoff to research and
+optimization; `summary.txt` is a human-readable rendering.
+
+```text
+summary.json: schema_version, platform, classification_status, evidence,
+              symptoms, localize, findings, suggested_queries
+summary.txt:  readable copy of the diagnosis
+```
+
+Only `classification_status: complete` may enter an optimization plan.
+`blocked`, `skipped`, or `insufficient-evidence` requires repairing collection
+or adding evidence; it is not a license to infer a bottleneck from code.
 
 ---
 
@@ -49,6 +67,8 @@ Output structure:
     ├── *.amdgcn       # Triton/Gluon kernel assembly
     ├── *_final_isa.s  # FlyDSL kernel assembly
     └── compile.log    # Kernel compilation output log
+├── summary.json        # Canonical classification contract
+└── summary.txt         # Human-readable rendering
 ```
 
 ### ATT: Instruction-Level Trace
@@ -351,6 +371,30 @@ ncu --import profile.ncu-rep --page raw --csv > metrics.csv
 | `smsp__warp_issue_stalled_not_selected_per_warp_active.pct` | Warp ready but not scheduled | Insufficient occupancy |
 
 ### SASS Instruction → Optimization Mapping
+
+### Post-Change ISA Validation (NVIDIA Only)
+
+Do not run cubin/SASS/PTX extraction as the first macro-bottleneck diagnostic
+or after every candidate edit. Run it in Stage 4 only when the actual candidate
+measurement is materially below the Roofline/plan expectation, regresses without
+an explained tradeoff, or fails to move the intended utilization/resource metric.
+
+```bash
+# JIT kernels: collect the candidate report, then extract SASS from it.
+bash tools/profile_nvidia.sh kernel.py --output-dir profiles/v<N>/isa
+python tools/validate_nvidia_isa.py \
+  --ncu-rep profiles/v<N>/isa/ncu.ncu-rep --arch sm100 \
+  --output-dir profiles/v<N>/isa --expect tensor-core --expect no-spills
+
+# PTX is optional and requires an accessible cubin.
+python tools/validate_nvidia_isa.py \
+  --cubin <candidate.cubin> --arch sm100 --dump-ptx \
+  --output-dir profiles/v<N>/isa --expect tensor-core
+```
+
+The result is `isa_validation.json`, plus `candidate.sass` and, when available,
+`candidate.ptx`. Failed required checks invalidate the candidate's ISA claim;
+they do not by themselves diagnose the macro bottleneck.
 
 | SASS Pattern | Meaning | Issue | Action |
 |--------------|---------|-------|--------|

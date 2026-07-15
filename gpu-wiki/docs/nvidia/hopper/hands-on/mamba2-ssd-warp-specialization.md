@@ -29,5 +29,5 @@
 
 - **Warp Specialization Basics**: [Warp Specialization](warp-specialization.md) — DMA/MMA dual-role specialization fundamentals
 - **Linear Attention**: [Chunk Linear Attention Optimization](../gluon/linear_attention.md) — Similar multi-stage computation patterns
-- **Profiling**: [Hopper Profiling Guide](../gluon/profiling_guide.md) — Analyzing warp occupancy
+- **Profiling**: [Hopper Profiling Guide](../../common/profiling/hopper-gluon-ncu.md) — Analyzing warp occupancy
 - **Reference Kernel**: `reference-kernels/nvidia/hopper/` — 21 Hopper kernel source files

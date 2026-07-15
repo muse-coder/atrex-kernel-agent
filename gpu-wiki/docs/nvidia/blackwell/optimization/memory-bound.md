@@ -51,4 +51,4 @@ Nsight Compute shows high DRAM throughput but low tensor core utilization. Arith
 - [MoE Expert Load Imbalance](moe-load-imbalance.md)
 - [Pipeline Stalls](pipeline-stalls.md)
 - [Register Pressure -- Low Occupancy](register-pressure.md)
-- [AMD GPU Roofline Analysis Methodology](../../../amd/common/roofline-analysis-methodology.md)
+- [AMD GPU Roofline Analysis Methodology](../../../amd/common/profiling/roofline.md)

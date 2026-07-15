@@ -145,4 +145,4 @@ If AI > ridge point → compute-bound
 - **Prerequisites**: [GPU Memory Hierarchy](gpu-memory-hierarchy.md) — memory access pattern fundamentals
 - **Content Overlap**: The warp divergence section of this article overlaps with ``gpu-execution-model.md``; the latter focuses on definitions while this article focuses on optimization techniques
 - **NVIDIA Profiling**: [NCU Profiling Guide](../nvidia/common/profiling/ncu-profiling-guide.md) — practical tool usage for Roofline analysis
-- **AMD Profiling**: [rocprofv3 Instruction-Level Profiling](../amd/gluon/gfx942/profiling_guide.md)
+- **AMD Profiling**: [rocprofv3 Instruction-Level Profiling](../amd/common/profiling/gfx942-gluon-att.md)

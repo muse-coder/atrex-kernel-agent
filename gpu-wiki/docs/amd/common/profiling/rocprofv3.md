@@ -397,17 +397,17 @@ rocprofv3 --list-avail
 | Visualization | Perfetto UI | ncu-ui |
 | Instruction-level analysis | ATT (see architecture-specific profiling_guide) | Source page (`--page source`) |## Related Documents
 
-- **NVIDIA counterpart**: [NCU Profiling Guide](../../nvidia/common/profiling/ncu-profiling-guide.md) — Full usage of NVIDIA Nsight Compute
-- **CDNA3 Instruction-level Analysis**: [rocprofv3 ATT Detailed Guide](../gluon/gfx942/profiling_guide.md) — ATT Thread Trace usage
-- **CDNA4 Instruction-level Analysis**: [CDNA4 rocprofv3 Profile](../gluon/gfx950/profiling_guide.md)
-- **Prerequisites**: [GPU Instruction-level Optimization](../../generic/gpu-instruction-optimization.md) — Roofline analysis principles
+- **NVIDIA counterpart**: [NCU Profiling Guide](../../../nvidia/common/profiling/ncu-profiling-guide.md) — Full usage of NVIDIA Nsight Compute
+- **CDNA3 Instruction-level Analysis**: [rocprofv3 ATT Detailed Guide](gfx942-gluon-att.md) — ATT Thread Trace usage
+- **CDNA4 Instruction-level Analysis**: [CDNA4 rocprofv3 Profile](gfx950-gluon-att.md)
+- **Prerequisites**: [GPU Instruction-level Optimization](../../../generic/gpu-instruction-optimization.md) — Roofline analysis principles
 
 
 ## Related
 
-- [aiter Optimization Techniques in Detail](aiter-optimization-techniques.md)
-- [AMD GPU Kernel Optimization Framework Overview](amd-kernel-optimization-frameworks.md)
-- [Community AMD GPU Kernel Optimization](amd-kernel-optimization.md)
-- [AMD MFMA Matrix Core Programming Guide](amd-mfma-matrix-cores.md)
-- [Composable Kernel (CK) Architecture Overview](ck-architecture-overview.md)
-- [NVIDIA Nsight Compute (NCU) Profiling Guide](../../nvidia/common/profiling/ncu-profiling-guide.md)
+- [aiter Optimization Techniques in Detail](../aiter-optimization-techniques.md)
+- [AMD GPU Kernel Optimization Framework Overview](../amd-kernel-optimization-frameworks.md)
+- [Community AMD GPU Kernel Optimization](../amd-kernel-optimization.md)
+- [AMD MFMA Matrix Core Programming Guide](../amd-mfma-matrix-cores.md)
+- [Composable Kernel (CK) Architecture Overview](../ck-architecture-overview.md)
+- [NVIDIA Nsight Compute (NCU) Profiling Guide](../../../nvidia/common/profiling/ncu-profiling-guide.md)

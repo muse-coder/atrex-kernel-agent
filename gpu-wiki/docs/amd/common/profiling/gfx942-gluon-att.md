@@ -517,7 +517,7 @@ bazelisk run \
 
 ## Related
 
-- **General rocprofv3 Usage**: [AMD rocprofv3 Profiling Guide](../../common/rocprofv3-profiling-guide.md) — general features such as tracing, counter collection, output formats
+- **General rocprofv3 Usage**: [AMD rocprofv3 Profiling Guide](rocprofv3.md) — general features such as tracing, counter collection, output formats
 - **CDNA4 Instruction-Level Analysis**: [CDNA4 rocprofv3 Profile](../gfx950/profiling_guide.md)
 - **NVIDIA Counterpart**: [NCU Profiling Guide](../../../nvidia/common/profiling/ncu-profiling-guide.md) — complete NVIDIA Nsight Compute usage
 - **Prerequisite Knowledge**: [GPU Instruction-Level Optimization](../../../generic/gpu-instruction-optimization.md) — Roofline analysis principles

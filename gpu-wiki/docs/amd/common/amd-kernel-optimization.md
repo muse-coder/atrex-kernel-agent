@@ -275,6 +275,6 @@ Achieving peak bandwidth requires using multiple IODs simultaneously.
 - GEMM Tuning — GEMM performance optimization on AMD GPUs
 - [AMD Kernel Optimization Frameworks](amd-kernel-optimization-frameworks.md) — CK/AITER/Triton framework overview
 - [AITER Optimization Techniques](aiter-optimization-techniques.md) — AITER inference operator library optimization techniques
-- [Profiling Tools Overview](profiling-tools-overview.md) — Performance analysis tools such as rocprofv3
+- [Profiling Tools Overview](profiling/README.md) — Performance analysis tools such as rocprofv3
 - Triton Kernel Tuning Parameters — Triton tuning guide on AMD GPUs
 - [Hardware Comparison CDNA3/CDNA4](../hardware-specs/hardware-comparison-cdna3-cdna4.md) — MI300X vs MI355X architecture comparison

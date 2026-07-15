@@ -114,7 +114,7 @@ docs/
 | Task | Path |
 |------|------|
 | Writing inline ASM | CuTeDSL: `docs/nvidia/common/cutedsl/cutedsl-inline-ptx-patterns.md`; FlyDSL: `docs/amd/flydsl/flydsl-inline-asm-patterns.md` |
-| Profiling | NVIDIA: `docs/nvidia/common/profiling/`; AMD: `docs/amd/common/rocprofv3-profiling-guide.md` |
+| Profiling | NVIDIA: `docs/nvidia/common/profiling/`; AMD: `docs/amd/common/profiling/` |
 | Cross-architecture migration | `docs/RELATIONS.md` → `docs/{nvidia/hopper,amd}/converter/` |
 | Pitfalls | the `pitfalls/` subfolder inside the relevant arch/topic |
 

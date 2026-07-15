@@ -132,6 +132,6 @@ Decode @ Batch=256 on B200: All versions except Triton achieve ~7600 GB/s (95% b
 - [Blackwell GPGPU Architecture New Features Overview](blackwell-gpgpu-new-features-overview.md)
 - [NVIDIA Blackwell Tensor Core Analysis (Part 2): B300](blackwell-tensor-core-analysis-b300.md)
 - [NVIDIA Blackwell Tensor Core Analysis (Part 1)](blackwell-tensor-core-analysis-part1.md)
-- [AMD GPU Roofline Analysis Methodology](../../../amd/common/roofline-analysis-methodology.md)
+- [AMD GPU Roofline Analysis Methodology](../../../amd/common/profiling/roofline.md)
 - [Tensor Core from Volta to Blackwell](../../common/tensor-core-volta-to-blackwell.md)
 - [CUTLASS/CuTe Core Concepts and Layout Algebra](../../common/cutedsl/cutlass-cute-fundamentals.md)

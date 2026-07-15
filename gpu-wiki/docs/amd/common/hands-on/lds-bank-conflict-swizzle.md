@@ -45,5 +45,5 @@ a_smem = tl.make_block_ptr(
 ## Related
 
 - **Tuning Guide**: AMD GPU Kernel Tuning Guide — CDNA3 vs CDNA4 Hardware Specification Comparison
-- **Profiling**: [AMD rocprofv3 Profiling Guide](../rocprofv3-profiling-guide.md) — General rocprofv3 usage
+- **Profiling**: [AMD rocprofv3 Profiling Guide](../profiling/rocprofv3.md) — General rocprofv3 usage
 - **General Memory Hierarchy**: [GPU Memory Hierarchy and Optimization](../../../generic/gpu-memory-hierarchy.md)

@@ -13,5 +13,5 @@ Index for `amd/gluon/gfx950/`.
 | [mla_decode.md](mla_decode.md) | MLA Decode Attention Optimization Guide |
 | [optimization-guide.md](optimization-guide.md) | Gluon Kernel Performance Optimization Guide (AMD CDNA4) |
 | [pitfalls.md](pitfalls.md) | CDNA4 (gfx950) Practical Pitfalls |
-| [profiling_guide.md](profiling_guide.md) | ROCm Profiling Guide (CDNA4 / gfx950) |
+| [AMD profiling](../../common/profiling/README.md) | rocprofv3, ATT, Roofline, and trace decoder; use the CDNA4/Gluon ATT guide |
 | [softmax_reduce.md](softmax_reduce.md) | Softmax / Reduction / Element-wise Optimization Guide |

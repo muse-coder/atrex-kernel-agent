@@ -304,14 +304,14 @@ ncu --query-metrics
 
 ## Related
 
-- [Hopper (sm_90) General ISA Optimization Checklist](common_optimizations.md)
-- [Fused Attention (Prefill / Paged Attention) Optimization Guide](fused_attention.md)
-- [Hopper (sm_90) SASS Instruction Patterns and Optimization Reference](isa_patterns.md)
-- [Chunk Linear Attention / Recurrent State Update Optimization Guide](linear_attention.md)
-- [Standard GEMM / Batched GEMM Optimization Guide](matmul.md)
-- [rocprofv3 Instruction-Level Profile Details](../../../amd/gluon/gfx942/profiling_guide.md)
-- [ROCm Profiling Guide (CDNA4 / gfx950)](../../../amd/gluon/gfx950/profiling_guide.md)
+- [Hopper (sm_90) General ISA Optimization Checklist](../../hopper/gluon/common_optimizations.md)
+- [Fused Attention (Prefill / Paged Attention) Optimization Guide](../../hopper/gluon/fused_attention.md)
+- [Hopper (sm_90) SASS Instruction Patterns and Optimization Reference](../../hopper/gluon/isa_patterns.md)
+- [Chunk Linear Attention / Recurrent State Update Optimization Guide](../../hopper/gluon/linear_attention.md)
+- [Standard GEMM / Batched GEMM Optimization Guide](../../hopper/gluon/matmul.md)
+- [rocprofv3 Instruction-Level Profile Details](../../../amd/common/profiling/gfx942-gluon-att.md)
+- [ROCm Profiling Guide (CDNA4 / gfx950)](../../../amd/common/profiling/gfx950-gluon-att.md)
 - [NVIDIA Nsight Compute (NCU) Profiling Guide](../../common/profiling/ncu-profiling-guide.md)
-- [AMD rocprofv3 Profiling Guide](../../../amd/common/rocprofv3-profiling-guide.md)
+- [AMD rocprofv3 Profiling Guide](../../../amd/common/profiling/rocprofv3.md)
 - [Gluon Tutorial 07: Persistent Kernels and Pipeline Optimization](../../common/gluon/gluon-07-persistent-kernel-pipeline.md)
 - [Document Relationship Diagram](../../../RELATIONS.md)

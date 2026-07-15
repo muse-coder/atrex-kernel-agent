@@ -17,7 +17,6 @@ Index for `amd/gluon/gfx942/`.
 | [optimization_results.md](optimization_results.md) | Flash Attention Optimization Results Summary |
 | [optimization_strategy.md](optimization_strategy.md) | Optimization Strategies (Sorted by Priority) |
 | [pattern_overview.md](pattern_overview.md) | Small Matrix GEMM Optimization Guide |
-| [profiling_guide.md](profiling_guide.md) | rocprofv3 Instruction-Level Profile Details |
-| [rocprof-trace-decoder.md](rocprof-trace-decoder.md) | ROCprof Trace Decoder |
+| [AMD profiling](../../common/profiling/README.md) | rocprofv3, ATT, Roofline, and trace decoder; use the CDNA3/Gluon ATT guide |
 | [se_level_zigzag.md](se_level_zigzag.md) | SE-level Causal Attention Load Balancing |
 | [warp_pipeline_stage.md](warp_pipeline_stage.md) | Warp Pipeline Stage Full Packaging (Key GEMM Optimization) |

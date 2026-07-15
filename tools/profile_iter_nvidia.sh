@@ -92,6 +92,7 @@ DIFF_DIR=""
 
 # ncu-report-skill helpers path (can be overridden via environment variable)
 NCU_HELPERS="${NCU_HELPERS:-}"
+NCU_PARSE_FAILED=false
 
 usage() {
     cat <<EOF
@@ -283,10 +284,13 @@ if [[ -n "$NCU_HELPERS" ]]; then
     echo "  Step 3: Parse key metrics"
     echo "=========================================="
 
-    python3 "$NCU_HELPERS/analyze_reports.py" \
+    if ! python3 "$NCU_HELPERS/analyze_reports.py" \
         --run-dir "$OUTPUT_DIR" \
         --report "$OUTPUT_DIR/ncu.ncu-rep" \
-        --tag run
+        --tag run; then
+        echo "Warning: NCU metrics parsing failed; writing a blocked summary contract"
+        NCU_PARSE_FAILED=true
+    fi
 
     # Optional: source-level stall hotspots
     if [[ "$COLLECT_SOURCE" == true && -f "$OUTPUT_DIR/ncu_source.ncu-rep" ]]; then
@@ -416,15 +420,40 @@ if [[ "$NO_CLASSIFY" != true && -f "$OUTPUT_DIR/analysis/metrics_key_run.json" ]
     echo "  Step 4: Symptom classification"
     echo "=========================================="
 
-    python3 "$SCRIPT_DIR/classify_ncu.py" \
+    if python3 "$SCRIPT_DIR/classify_ncu.py" \
         --metrics "$OUTPUT_DIR/analysis/metrics_key_run.json" \
-        --output "$OUTPUT_DIR/summary.txt"
-
-    echo ""
-    cat "$OUTPUT_DIR/summary.txt"
+        --output "$OUTPUT_DIR/summary.txt" \
+        --summary-json "$OUTPUT_DIR/summary.json"; then
+        echo ""
+        cat "$OUTPUT_DIR/summary.txt"
+    elif [[ "$NCU_PARSE_FAILED" == true ]]; then
+        STATUS="blocked"
+        REASON="NCU metrics parsing failed."
+    else
+        echo "Warning: NCU symptom classification failed; writing a blocked summary contract"
+    fi
 elif [[ "$NO_CLASSIFY" != true && -z "$NCU_HELPERS" ]]; then
     echo ""
     echo "Skipping symptom classification (ncu-report-skill helpers not available)"
+fi
+
+# The optimizer consumes summary.json as its gate.  Preserve collection-only and
+# parser-failure runs as explicit non-actionable states instead of silently
+# leaving downstream stages to infer a bottleneck from a raw .ncu-rep.
+if [[ ! -f "$OUTPUT_DIR/summary.json" ]]; then
+    if [[ "$NO_CLASSIFY" == true ]]; then
+        STATUS="skipped"
+        REASON="Classification was explicitly disabled with --no-classify."
+    elif [[ -z "$NCU_HELPERS" ]]; then
+        STATUS="blocked"
+        REASON="NCU helpers were unavailable, so metrics could not be classified."
+    else
+        STATUS="blocked"
+        REASON="NCU metrics parsing did not produce analysis/metrics_key_run.json."
+    fi
+    python3 "$SCRIPT_DIR/profile_summary.py" \
+        --output-dir "$OUTPUT_DIR" --platform nvidia --status "$STATUS" \
+        --reason "$REASON" --evidence "ncu.ncu-rep"
 fi
 
 echo ""
@@ -434,7 +463,7 @@ echo "=========================================="
 echo "Output directory: $OUTPUT_DIR"
 echo ""
 echo "Next steps:"
-if [[ -f "$OUTPUT_DIR/summary.txt" ]]; then
+if [[ -f "$OUTPUT_DIR/summary.json" ]] && grep -q '"classification_status": "complete"' "$OUTPUT_DIR/summary.json"; then
     echo "  1. See $OUTPUT_DIR/summary.txt for bottleneck diagnosis"
     echo "  2. See $OUTPUT_DIR/analysis/metrics_key_run.txt for detailed metrics"
     if [[ "$COLLECT_SOURCE" == true ]]; then

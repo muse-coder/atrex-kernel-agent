@@ -27,4 +27,4 @@ ncu --section SpeedOfLight_RooflineChart ./my_app
 - [NVIDIA Architecture-Specific Optimization Techniques (Index)](../nvidia-arch-specific-optimization.md)
 - [NVIDIA Nsight Compute (NCU) Profiling Guide](ncu-profiling-guide.md) — Complete NCU usage guide
 - [NCU Profile-Driven Optimization Workflow](ncu-profile-driven-optimization-workflow.md) — Optimization workflow that converges from report/counter/source/PM sampling/PTX-SASS evidence to a single kernel edit
-- [Hopper Profiling In-Depth](../../hopper/gluon/profiling_guide.md) — Hopper-specific ncu profiling
+- [Hopper Profiling In-Depth](hopper-gluon-ncu.md) — Hopper-specific ncu profiling

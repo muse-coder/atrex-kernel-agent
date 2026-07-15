@@ -311,7 +311,7 @@ If static resource usage decreases but rocprofv3 performance degrades, prioritiz
 
 ## Relationship with Other AMD Documents
 
-- For Tile/Grid decisions, refer to `common/roofline-analysis-methodology.md` and
+- For Tile/Grid decisions, refer to `common/profiling/roofline.md` and
   `common/small-matrix-cu-utilization.md`.
 - For LDS/bank conflict analysis, refer to `common/lds-bank-conflict-optimization.md`.
 - For scratch/VGPR analysis, refer to `common/scratch-elimination-vgpr-spill.md`.
@@ -346,6 +346,6 @@ If static resource usage decreases but rocprofv3 performance degrades, prioritiz
 - [FlyDSL Flash Attention bf16 with Free Mask on MI308X (gfx942)](cdna3-flash-attention-bf16-mask-optimization.md)
 - [FlyDSL Flash Attention Forward (bf16, no-mask ISA scheduling) on MI308X](cdna3-flash-attention-bf16-nomask-isa-scheduling.md)
 - [NVIDIA Nsight Compute (NCU) Profiling Guide](../../../nvidia/common/profiling/ncu-profiling-guide.md)
-- [AMD rocprofv3 Profiling Guide](../../common/rocprofv3-profiling-guide.md)
+- [AMD rocprofv3 Profiling Guide](../../common/profiling/rocprofv3.md)
 - [Warp Specialization Design Principles](../../../nvidia/common/warp-specialization-design-principles.md)
 - [Document Relationship Diagram](../../../RELATIONS.md)

@@ -90,21 +90,27 @@ The profiler subagent returns:
 | Field | Usage |
 |-------|-------|
 | `profiles_dir` | Path to `profiles/v<N>/` directory |
-| `summary_path` | Path to `profiles/v<N>/summary.txt` — unified evidence summary for both NVIDIA and AMD |
+| `summary_json_path` | Path to `profiles/v<N>/summary.json` — canonical machine-readable diagnosis for both NVIDIA and AMD |
+| `summary_path` | Path to `profiles/v<N>/summary.txt` — human-readable rendering of the same diagnosis |
 
-`summary.txt` contains all extracted evidence: key metrics, `SYMPTOMS`, `LOCALIZE` (if applicable), and search suggestions. Both NVIDIA and AMD platforms produce this file as the single structured output.
+`summary.json` is the single structured output. It contains `classification_status`, evidence paths, `symptoms`, `localize`, and suggested queries; `summary.txt` is only its human-readable rendering. Both platforms must produce the pair.
+
+**Stage 1 gate**: proceed to Stage 2 only when `summary.json` exists and
+`classification_status` is `complete`. `blocked`, `skipped`, or
+`insufficient-evidence` is a profiling blocker: report the reason and collect
+the missing evidence instead of searching or editing code.
 
 ### Localization rule (mandatory)
 
 The first profile pass runs **without** `--source` (cheap: no second `ncu` collection). Escalate to `--source` only when a localizable symptom actually drives a change:
 
-- **Trigger** — `summary.txt` emits a `LOCALIZE` line **and** Stage 3 is about to choose a concrete code change based on that symptom.
+- **Trigger** — `summary.json` contains a `localize` entry for the targeted symptom **and** Stage 3 is about to choose a concrete code change based on that symptom.
 - **Required action** — before editing `kernel.py` in Stage 3, re-launch `gpu-kernel-profiler` with `--source` mode, open the evidence file named on the `LOCALIZE` line, and pin the change to the specific source line / SASS address it identifies. Do not change a line you have not localized.
 
 ### Handoff to Stage 2
 
 After receiving the subagent output:
-- Read `summary.txt` and proceed to Stage 2 with the evidence and symptoms as input for research and planning.
+- Read `summary.json`; only a `complete` classification may proceed to Stage 2 with its evidence and symptoms.
 
 ## Stage 2: Evidence-Driven Search and Planning
 
@@ -139,7 +145,7 @@ The main agent must provide these parameters when launching the `gpu-kernel-rese
 | `platform` | From workspace `README.md` (nvidia / amd) |
 | `framework` | From workspace `README.md` (triton / cutedsl / flydsl / gluon) |
 | `kernel_type` | From workspace `README.md` |
-| `profiles_dir` | `profiles/v<N>/` path (Stage 1 output) |
+| `profiles_dir` | `profiles/v<N>/` path (Stage 1 output; contains `summary.json`) |
 | `memory_dir` | `memory/` directory path |
 | `historical_plans` | All `plans/v*_plan.md` paths |
 | `stop_conditions` | From workspace `README.md` |
@@ -185,12 +191,12 @@ Inputs:
   - kernel_file: kernel.py
   - plan_path: plans/v<N>_plan.md
   - profiles_dir: profiles/v<N>/
-  - summary_path: profiles/v<N>/summary.txt
+  - summary_json_path: profiles/v<N>/summary.json
   - memory_dir: memory/
   - gpu_wiki_path: <gpu-wiki root path>
 ```
 
-The `kernel-optimize` subagent will autonomously: validate the plan's evidence attribution, perform localization checks for `LOCALIZE` symptoms (re-profiling with `--source` if needed), implement each optimization action in `kernel.py`, run correctness validation via `test_kernel.py`, and update `memory/v<N>.json` with optimization metadata.
+The `kernel-optimize` subagent will autonomously: validate the plan's evidence attribution, perform localization checks for `LOCALIZE` symptoms (re-profiling with `--source` if needed), implement each optimization action in `kernel.py`, run correctness validation via `test_kernel.py`, and update `memory/v<N>.json` with optimization metadata. It does not run ISA inspection merely because code changed.
 
 ### Output Received
 
@@ -219,6 +225,33 @@ The main agent must launch a subagent for Stage 4. The main agent must not run v
 
 The subagent executes correctness tests with timeout enforcement, measures performance, calculates utilization, compares with the previous iteration, and writes the iteration report. It returns PASS/FAIL and the report path so the main agent can proceed to Stage 5 or revert.
 
+### NVIDIA ISA escalation after a performance mismatch
+
+For NVIDIA only, the Stage 4 subagent must compare the measured result with the
+Roofline/Stop Conditions in the workspace `README.md` and the plan's
+`Performance Expectation and ISA Escalation` section. Run SASS/cubin/PTX
+analysis only if one of these is true:
+
+- measured throughput or utilization is materially below the modeled/plan
+  expectation;
+- the candidate regresses without an explained correctness or resource tradeoff;
+- the expected utilization/resource movement did not occur.
+
+When triggered, preserve the Stage 1 evidence and collect the candidate report
+under `profiles/v<N>/isa/`, then validate the relevant hypothesis:
+
+```bash
+bash tools/profile_iter_nvidia.sh kernel.py --output-dir profiles/v<N>/isa
+python tools/validate_nvidia_isa.py \
+  --ncu-rep profiles/v<N>/isa/ncu.ncu-rep --arch <sm90|sm100> \
+  --output-dir profiles/v<N>/isa --expect <relevant-check>
+```
+
+Use `--dump-ptx` only with an accessible cubin and only when the mismatch could
+be caused by compiler lowering. Record `isa_validation.json`, SASS/PTX artifact
+paths, and the conclusion in the iteration report and `memory/v<N>.json`.
+Absent a mismatch, do not collect ISA artifacts.
+
 Subagent requirements:
 
 - **Task type**: execution and validation task (may run commands and write reports).
@@ -230,6 +263,8 @@ Subagent requirements:
   4. Compare metrics against the previous version.
   5. Evaluate ISA metric progress against targets in `README.md`.
   6. Update `memory/v<N>.json` with performance, correctness, and ISA progress data.
+  7. For NVIDIA, apply the ISA escalation rule above after measurement; do not
+     treat SASS/PTX as a default profiling artifact.
 - **Forbidden**: do not modify `kernel.py`; do not perform Stage 3 changes; do not commit; do not skip correctness validation; do not fabricate performance numbers.
 - **Return**: quality-gate result (PASS / FAIL / TIMEOUT_FAIL), `memory/v<N>.json` path, performance summary, correctness result, and failure reason if applicable.
 
@@ -363,9 +398,9 @@ When stop conditions are not met:
 
 Different tools provide different layers of evidence and must not be mixed:
 
-- `profile_iter_nvidia.sh` + `classify_ncu.py`: primary NVIDIA profile entry point (wraps `ncu`). Collects the `.ncu-rep`, parses metrics, and classifies symptoms. Artifact: `summary.txt` (symptoms + search suggestions).
+- `profile_iter_nvidia.sh` + `classify_ncu.py`: primary NVIDIA profile entry point (wraps `ncu`). Collects the `.ncu-rep`, parses metrics, and classifies symptoms. Artifacts: `summary.json` (canonical) + `summary.txt` (rendering).
 - `extract_nvidia_asm.py`: NVIDIA static SASS evidence for tensor core instructions, load/store width, register spills, and scalar fallback. Also persists each round's raw `kernel.sass` / `kernel.ptx` used by the cross-round text diffs below.
-- `ncu_helpers/source_evidence.py` (VeloQ-ported; run automatically by `profile_iter_nvidia.sh --source`, indexed in `source_evidence_manifest.json`): bundles per-line/per-SASS metric attribution (`source_metrics`), warp-stall attribution (`warp_stalls`), and structured source-correlated SASS (`disasm`). **Independent evidence** — read the `analysis/*_run.json` (v1 envelope) or `.txt` digests to localise *which source line / SASS address* a symptom lives on. They do not change `summary.txt`; the `SYMPTOMS` diagnosis still comes only from `classify_ncu.py`, and its `LOCALIZE` line tells you which of these files to open.
+- `ncu_helpers/source_evidence.py` (VeloQ-ported; run automatically by `profile_iter_nvidia.sh --source`, indexed in `source_evidence_manifest.json`): bundles per-line/per-SASS metric attribution (`source_metrics`), warp-stall attribution (`warp_stalls`), and structured source-correlated SASS (`disasm`). **Independent evidence** — read the `analysis/*_run.json` (v1 envelope) or `.txt` digests to localise *which source line / SASS address* a symptom lives on. `classify_ncu.py` writes the selected evidence paths to `summary.json` `localize`.
 - **Cross-round diff (progressive optimization)** — with `profile_iter_nvidia.sh --diff PREV_DIR`, compare two iterations on three layers: `ncu_helpers/row_key.py` for per-row **metric** delta (`diff_*.txt`), `ptx_diff.sh` for the normalized **PTX** instruction-body diff (`diff_ptx.txt` — did the change reach the IR?), and `sass_hist_diff.sh` for the **SASS** instruction-category histogram delta (`diff_sass_hist.txt` — which instruction classes moved?). PTX diff is advisory for JIT frameworks (CuteDSL/Triton); the SASS histogram stays authoritative.
 - `profile_kernel.sh`: primary AMD profile entry point, collecting ATT, PMC, and ASM for instruction width, spills, and LDS access patterns.
 - `kernel.s`: AMD assembly evidence for load/store width, LDS instruction form, scratch operations, and spills.

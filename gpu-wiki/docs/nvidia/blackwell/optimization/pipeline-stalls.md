@@ -59,5 +59,5 @@ Nsight Compute shows TMA or tcgen05 units idle despite nominally compute-bound w
 - [MoE Expert Load Imbalance](moe-load-imbalance.md)
 - [Register Pressure -- Low Occupancy](register-pressure.md)
 - [NVIDIA Nsight Compute (NCU) Profiling Guide](../../common/profiling/ncu-profiling-guide.md)
-- [AMD rocprofv3 Profiling Guide](../../../amd/common/rocprofv3-profiling-guide.md)
+- [AMD rocprofv3 Profiling Guide](../../../amd/common/profiling/rocprofv3.md)
 - [Software Pipeline Depth Optimization](../../common/software-pipeline-depth-optimization.md)

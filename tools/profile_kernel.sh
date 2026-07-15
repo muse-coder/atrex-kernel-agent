@@ -333,6 +333,20 @@ if [[ "$RUN_PMC" == true ]]; then
     echo "PMC output directory: $PMC_DIR"
 fi
 
+# Normalize ATT, PMC, and AMDGCN evidence into the same summary contract used
+# by the NVIDIA workflow.  Insufficient artifacts are recorded explicitly;
+# downstream planning must not infer symptoms from source code alone.
+echo ""
+echo "=========================================="
+echo "  Step 3: Classifying AMD profile evidence"
+echo "=========================================="
+if ! python3 "$SCRIPT_DIR/classify_rocprof.py" --profile-dir "$OUTPUT_DIR"; then
+    echo "Warning: AMD profile classification failed; writing a blocked summary contract"
+    python3 "$SCRIPT_DIR/profile_summary.py" \
+        --output-dir "$OUTPUT_DIR" --platform amd --status blocked \
+        --reason "AMD ATT/PMC/ASM classification failed."
+fi
+
 echo ""
 echo "=========================================="
 echo "  Profile complete"
@@ -343,4 +357,4 @@ echo "Next steps:"
 echo "  1. Inspect $OUTPUT_DIR/att/**/stats_*.csv to analyze hot instructions"
 echo "  2. Inspect $OUTPUT_DIR/pmc/**/*.csv to analyze hardware counters"
 echo "  3. Inspect $OUTPUT_DIR/asm/*.amdgcn to analyze generated assembly"
-echo "  4. optimize using references/common_optimizations.md and references/patterns/"
+echo "  4. Read $OUTPUT_DIR/summary.json before planning an optimization"

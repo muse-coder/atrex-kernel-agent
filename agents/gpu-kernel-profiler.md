@@ -44,7 +44,7 @@ mkdir -p profiles/v<N>
 
 Use an independent output directory for every iteration to avoid mixing versions.
 
-For detailed tool usage, metric interpretation, and troubleshooting, refer to `reference/profile_guide.md`.
+For detailed tool usage, metric interpretation, and troubleshooting, refer to `reference/profile_guide.md`. The profiler must always finish by producing `summary.json` and its human-readable `summary.txt` rendering.
 
 ### Phase 2: Run Profiling (Platform-Specific)
 
@@ -83,10 +83,10 @@ The script automatically performs these steps:
 1. `ncu --set full` collects the `.ncu-rep` binary report.
 2. (Optional, `--source`) `ncu --set source` collects source-level stall data.
 3. `analyze_reports.py` (bundled in `tools/ncu_helpers/`) parses key metrics into `metrics_key_run.json`.
-3b. (Only on `--source`) `source_evidence.py` generates the source-level evidence bundle and indexes it in `source_evidence_manifest.json`. Best-effort, never fatal; the artifacts are a dependency-free Python port of VeloQ's `ncu` verbs onto the same `ncu_report` API, emit a `v1` JSON envelope, and do **not** feed `classify_ncu.py` or change `summary.txt`.
+3b. (Only on `--source`) `source_evidence.py` generates the source-level evidence bundle and indexes it in `source_evidence_manifest.json`. Best-effort, never fatal; the artifacts are a dependency-free Python port of VeloQ's `ncu` verbs onto the same `ncu_report` API and emit a `v1` JSON envelope.
 3d. (Always) raw SASS text is persisted to `kernel.sass` (via `extract_nvidia_asm.py`), and raw PTX to `kernel.ptx` (best-effort). These make any two rounds comparable at the IR/ISA text layer.
 3e. (Optional, `--diff PREV_DIR`) three-layer cross-round diff: `row_key.py` for per-row metric delta (`analysis/diff_*.txt`), `ptx_diff.sh` for normalized PTX instruction-body diff (`analysis/diff_ptx.txt`), and `sass_hist_diff.sh` for the SASS instruction-category histogram delta (`analysis/diff_sass_hist.txt`).
-4. `classify_ncu.py` classifies symptoms against the 14 NCU diagnosis patterns, producing `summary.txt`.
+4. `classify_ncu.py` classifies symptoms against the 14 NCU diagnosis patterns, producing `summary.json` and `summary.txt`.
 
 Artifacts (always):
 
@@ -95,6 +95,7 @@ Artifacts (always):
 - `profiles/v<N>/kernel.sass` — raw SASS text (for cross-round SASS histogram diff)
 - `profiles/v<N>/kernel.ptx` — raw PTX text (best-effort; for cross-round PTX diff)
 - `profiles/v<N>/summary.txt` — final summary (metrics + `SYMPTOMS` + `LOCALIZE` + search suggestions)
+- `profiles/v<N>/summary.json` — canonical machine-readable classification contract
 
 Artifacts (only with `--source`, indexed by `analysis/source_evidence_manifest.json`):
 
@@ -109,7 +110,7 @@ Artifacts (only with `--diff PREV_DIR`):
 - `analysis/diff_ptx.txt` — normalized PTX instruction-body diff vs the previous run (did the source change reach the IR?)
 - `analysis/diff_sass_hist.txt` — SASS instruction-category histogram delta vs the previous run (which instruction classes did the change land on?)
 
-Extract at least: memory throughput / SOL, L2 hit rate, occupancy, warp stall reasons, and Tensor Core / MMA utilization. The `SYMPTOMS` line in `summary.txt` is controlled vocabulary that feeds directly into the Stage 2 gpu-wiki search (see *Symptom-Driven Retrieval* in `<gpu-wiki>/README.md`). The `LOCALIZE` line names which `--source` evidence file maps each fired symptom to a source line / SASS address — to act on it, rerun with `--source` and open that file (or `source_evidence_manifest.json`). Note `warp_stalls_*` (from `timed_warp_samples`) and `stall_hotspots` (from pcsamp metrics) answer the same "where do warps stall" question from two sources; prefer `warp_stalls_*` and use `stall_hotspots` only to cross-check.
+Extract at least: memory throughput / SOL, L2 hit rate, occupancy, warp stall reasons, and Tensor Core / MMA utilization. The `summary.json` `symptoms` field is controlled vocabulary that feeds directly into Stage 2 gpu-wiki search (see *Symptom-Driven Retrieval* in `<gpu-wiki>/README.md`). Its `localize` paths name the evidence artifact to open before a change. Note `warp_stalls_*` (from `timed_warp_samples`) and `stall_hotspots` (from pcsamp metrics) answer the same "where do warps stall" question from two sources; prefer `warp_stalls_*` and use `stall_hotspots` only to cross-check.
 
 #### AMD CDNA3/CDNA4: ATT Decoder Setup
 
@@ -272,7 +273,7 @@ Check assembly for:
 
 The first profile pass runs **without** `--source` (cheap: no second `ncu` collection). Escalate to `--source` only when a localizable symptom actually drives a change:
 
-- **Trigger** — `summary.txt` emits a `LOCALIZE` line (only localizable symptoms produce one; symptoms with no line-level signal, e.g. occupancy, never do) **and** you are about to choose a concrete code change based on that symptom.
+- **Trigger** — `summary.json` contains a `localize` path for the targeted symptom (symptoms without line-level evidence, e.g. occupancy, may have none) **and** you are about to choose a concrete code change based on that symptom.
 - **Required action** — before editing `kernel.py`, re-profile the kernel with `--source`, open the evidence file named on the `LOCALIZE` line (or read `source_evidence_manifest.json`), and pin the change to the specific source line / SASS address it identifies. Do not change a line you have not localized.
 
 This makes the signal — not the agent's discretion — decide when the evidence layer turns on: cheap by default, and the source-level evidence is guaranteed to be read at the moment it drives a code change. When no `LOCALIZE` line is present, no `--source` rerun is needed.
@@ -287,8 +288,8 @@ evidence -> inference -> optimization action
 
 Examples:
 
-- `summary.txt shows Pattern E (long_scoreboard=4.2)` -> `latency-bound` -> `try cp.async / double buffering`
-- `summary.txt shows Pattern A (grid=64 < sm=78)` -> `SM idle` -> `increase split-k or use a persistent kernel`
+- `summary.json lists memory evidence and memory-bound` -> `latency-bound` -> `try cp.async / double buffering`
+- `summary.json lists low-sm-utilization` -> `SM idle` -> `increase split-k or use a persistent kernel`
 - `PMC shows high SQ_LDS_BANK_CONFLICT` -> `LDS bank conflicts are significant` -> `try a swizzled layout`
 - `ASM shows many buffer_load_dword and few dwordx4` -> `global memory vectorization is insufficient` -> `adjust alignment and vector width`
 
@@ -299,16 +300,22 @@ Examples:
 | Deliverable | Description |
 |-------------|-------------|
 | `profiles/v<N>/` | Complete profile artifacts for this iteration |
-| `profiles/v<N>/summary.txt` | Unified evidence summary for both NVIDIA and AMD: key metrics, `SYMPTOMS`, `LOCALIZE` (if applicable), and search suggestions |
+| `profiles/v<N>/summary.json` | Canonical unified diagnosis for both NVIDIA and AMD: status, evidence, symptoms, and localization paths |
+
+Before returning, read `summary.json`. Only `classification_status: complete` is
+actionable. If the status is `blocked`, `skipped`, or `insufficient-evidence`,
+return that status and reason; do not claim a bottleneck or hand off an
+optimization direction.
 
 The agent must return:
 
 | Field | Description |
 |-------|-------------|
 | `profiles_dir` | Path to `profiles/v<N>/` directory |
-| `summary_path` | Path to `profiles/v<N>/summary.txt` — the single structured output file containing all evidence |
+| `summary_json_path` | Path to `profiles/v<N>/summary.json` — the single structured output contract |
+| `summary_path` | Path to `profiles/v<N>/summary.txt` — human-readable rendering |
 
-`summary.txt` is the unified output regardless of platform (NVIDIA or AMD). It must contain all extracted bottleneck evidence in structured format, including symptoms, localization info, and key metrics.
+`summary.json` is the unified output regardless of platform (NVIDIA or AMD). It must contain classification status, evidence paths, symptoms, and localization info; `summary.txt` mirrors it for humans.
 
 ---
 

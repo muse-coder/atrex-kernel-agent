@@ -240,7 +240,7 @@ python tools/compute_utilization.py \
 
 ## Step 2: Instruction-Level Profile Analysis
 
-> For detailed profile interpretation guide, see `docs/ref-docs/amd/gluon/gfx950/profiling_guide.md`.
+> For detailed profile interpretation guide, see `docs/ref-docs/amd/common/profiling/gfx950-gluon-att.md`.
 
 ### Key Steps
 
@@ -367,7 +367,7 @@ Build on the converter guide's source transformation strategy:
 | Document | Content |
 |------|------|
 | `docs/hardware-specs/hardware_specs_mi355x.md` | AMD CDNA4 GPU hardware compute specification table |
-| `docs/ref-docs/amd/gluon/gfx950/profiling_guide.md` | rocprofv3 instruction-level profile details |
+| `docs/ref-docs/amd/common/profiling/gfx950-gluon-att.md` | rocprofv3 instruction-level profile details |
 | `docs/ref-docs/amd/gluon/gfx950/common_optimizations.md` | General ISA optimization checklist (§3.0-3.6) + quick reference by bottleneck/type |
 | `docs/ref-docs/amd/gluon/gfx950/pitfalls.md` | Practical pitfall experience index (by pattern tag) |
 | `docs/ref-docs/amd/gluon/gfx950/matmul.md` | Standard GEMM optimization special topic |

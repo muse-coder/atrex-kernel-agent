@@ -99,5 +99,5 @@ Maxwell / Pascal / Volta are now considered **feature-complete**. The next major
 - [NVIDIA Blackwell Tensor Core Analysis (Part 2): B300](blackwell-tensor-core-analysis-b300.md)
 - [NVIDIA Blackwell Tensor Core Analysis (Part 1)](blackwell-tensor-core-analysis-part1.md)
 - [NVIDIA Nsight Compute (NCU) Profiling Guide](../../common/profiling/ncu-profiling-guide.md)
-- [AMD rocprofv3 Profiling Guide](../../../amd/common/rocprofv3-profiling-guide.md)
+- [AMD rocprofv3 Profiling Guide](../../../amd/common/profiling/rocprofv3.md)
 - [Composable Kernel (CK) Architecture Overview](../../../amd/common/ck-architecture-overview.md)

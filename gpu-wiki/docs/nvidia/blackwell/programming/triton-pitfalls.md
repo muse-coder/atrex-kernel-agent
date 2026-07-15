@@ -299,5 +299,5 @@ mechanism story before keeping a marginal win.)
 ## Related
 
 - [NVIDIA Nsight Compute (NCU) Profiling Guide](../../common/profiling/ncu-profiling-guide.md)
-- [AMD rocprofv3 Profiling Guide](../../../amd/common/rocprofv3-profiling-guide.md)
+- [AMD rocprofv3 Profiling Guide](../../../amd/common/profiling/rocprofv3.md)
 - [Triton Embraces Tile IR: Beyond SIMT](../../common/triton/triton-tile-ir-beyond-simt.md)

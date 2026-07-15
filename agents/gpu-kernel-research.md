@@ -110,7 +110,9 @@ target architecture — a Blackwell query never returns Hopper or CDNA pages.
 Map your input parameters to filters: `platform` → `--vendor`, `framework` →
 `--dsl`, and the target GPU/architecture → `--arch` (codenames or sm/gfx/chip
 aliases, e.g. `sm90`, `gfx942`, `mi300x`, `b200`). Map the profiler's exact
-`SYMPTOMS` values to repeatable `--symptom` filters. Use `--section` to select
+`summary.json` `symptoms` values to repeatable `--symptom` filters. Reject a
+profile whose `classification_status` is not `complete`; do not reconstruct
+symptoms from raw profiler files. Use `--section` to select
 the page role (`kernels`, `optimization`, `features`, or `programming`) and
 `--exclude-section articles` for implementation work. Use `--kernel-type` for
 the broad target family and prefer `--operator` for a named operator; both match
@@ -134,7 +136,7 @@ python3 <gpu-wiki>/scripts/query.py "gemm" --arch b200 --vendor nvidia \
 python3 <gpu-wiki>/scripts/query.py --arch b200 --vendor nvidia \
   --operator gdn --section kernels
 
-# 2) diagnosis query — consume the exact controlled value from summary.txt.
+# 2) diagnosis query — consume the exact controlled value from summary.json.
 #    This returns the diagnosis card, whose candidate-technique links are read next.
 python3 <gpu-wiki>/scripts/query.py --arch b200 --vendor nvidia \
   --section optimization --symptom pipeline-stalls
@@ -287,6 +289,11 @@ The plan must contain:
 - Input Evidence (from profiling artifacts)
 - Search Log (with Layer and New? columns populated)
 - Single Optimization Action (derived from new knowledge)
+- Performance Expectation and ISA Escalation section: state the measurable
+  post-change expectation derived from Roofline/profile evidence. SASS/PTX is
+  an escalation after a measured mismatch, not a planned default. Name the
+  likely checks only if the mismatch could be caused by lowering (tcgen05/TMA,
+  async copy, spills, or load width).
 - Expected Impact
 - Risks and Rollback
 

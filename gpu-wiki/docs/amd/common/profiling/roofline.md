@@ -54,7 +54,7 @@ Ridge Point = peak (FLOPS) / peakbandwidth (Bytes/s) (unit: FLOPs/Byte)
 | MI300X | FP64 | 81.7 | 5.3 | **15.4** |
 | MI308X | FP16/BF16 | ~232 | ~5.3* | **~43.8** |
 | MI355X | FP16/BF16 | — | — | **~629** |
-> The Ridge Point of MI355X is much higher than that of MI300X; the same tile configuration is more likely to be memory-bound on MI355X. See [Hardware Specification Comparison](../hardware-specs/hardware-comparison-cdna3-cdna4.md) for details.
+> The Ridge Point of MI355X is much higher than that of MI300X; the same tile configuration is more likely to be memory-bound on MI355X. See [Hardware Specification Comparison](../../hardware-specs/hardware-comparison-cdna3-cdna4.md) for details.
 
 ### Determining the Bottleneck
 
@@ -127,7 +127,7 @@ CU_ratio = grid_blocks / num_CUs   (MI308X: 80, MI300X: 304, MI355X: 256)
 |-------------------|----------|---------|
 | ≥ 50% | Normal | Proceed to ISA-level optimization |
 | 10%-50% | Low | Consider reducing tile + ISA optimization |
-| < 10% | **Severely insufficient** | **Must prioritize adjusting tiling strategy**, see [Small Matrix / Low CU Utilization Optimization](small-matrix-cu-utilization.md) |
+| < 10% | **Severely insufficient** | **Must prioritize adjusting tiling strategy**, see [Small Matrix / Low CU Utilization Optimization](../small-matrix-cu-utilization.md) |
 
 > **Experience**: This is the most common "directional error" — after doing extensive profiling and ISA optimization on small matrices, only to discover that 95% of CUs are idle, rendering all the prior work wasted. Calculate CU_ratio first, and combine it with Tile Size selection guidance to find the balance point between CU utilization and Tile AI.
 
@@ -158,7 +158,7 @@ Bandwidth Utilization (%) = Actual Bandwidth (TB/s) / Bandwidth Upper Bound (TB/
 
 | Data Volume Level | Bandwidth Upper Bound | How to Obtain |
 |-----------|---------|---------|
-| **Large data volume** (sufficient to saturate HBM) | Hardware theoretical peak bandwidth | Check [Hardware Specification Comparison](../hardware-specs/hardware-comparison-cdna3-cdna4.md) |
+| **Large data volume** (sufficient to saturate HBM) | Hardware theoretical peak bandwidth | Check [Hardware Specification Comparison](../../hardware-specs/hardware-comparison-cdna3-cdna4.md) |
 | **Small data volume** (insufficient to saturate HBM) | **Measured bandwidth upper bound for the same data volume** | Measure using a memcpy kernel |
 
 > **Experience**: When data volume is < ~100MB, the measured bandwidth is usually far below the theoretical peak (possibly only 50-80%). Using the theoretical peak as the denominator at this point will make bandwidth utilization appear very low, but the kernel may actually be approaching the bandwidth limit for that data volume.
@@ -210,7 +210,7 @@ theoretical_TFLOPS = 33.6M × 64 / 0.328 μs = 6.55 TFLOPS
 
 ## Related
 
-- **Hardware Specifications**: [Hardware Specification Comparison](../hardware-specs/hardware-comparison-cdna3-cdna4.md) — Ridge Point, peak performance, bandwidth for each architecture
-- **Occupancy**: [Occupancy Optimization](occupancy-optimization.md) — Relationship between VGPR and occupancy
-- **Small Matrix Optimization**: [Small Matrix/Low CU Utilization Optimization](small-matrix-cu-utilization.md) — Targeted strategies when CU utilization < 10%
-- **General Theory**: [GPU Execution Model](../../generic/gpu-execution-model.md), [GPU Memory Hierarchy](../../generic/gpu-memory-hierarchy.md)
+- **Hardware Specifications**: [Hardware Specification Comparison](../../hardware-specs/hardware-comparison-cdna3-cdna4.md) — Ridge Point, peak performance, bandwidth for each architecture
+- **Occupancy**: [Occupancy Optimization](../occupancy-optimization.md) — Relationship between VGPR and occupancy
+- **Small Matrix Optimization**: [Small Matrix/Low CU Utilization Optimization](../small-matrix-cu-utilization.md) — Targeted strategies when CU utilization < 10%
+- **General Theory**: [GPU Execution Model](../../../generic/gpu-execution-model.md), [GPU Memory Hierarchy](../../../generic/gpu-memory-hierarchy.md)

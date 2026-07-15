@@ -246,7 +246,7 @@ complementary optimization axes with AMD FlyDSL chunk-GDN.
 | Matrix Core Programming | `amd-mfma-matrix-cores.md` | `nvidia-ptx-mma-instructions.md` |
 | Optimization Frameworks | `amd-kernel-optimization-frameworks.md` (FlyDSL/CK/TileLang) | `cutlass-cute-fundamentals.md` + `cutlass-gemm-optimization.md` (CUTLASS/CuTe) |
 | DSL Programming | `amd/flydsl/flydsl-programming-guide.md` (FlyDSL) | `nvidia/common/cutedsl/cutedsl-programming-model.md` + `cutedsl-pipeline-patterns.md` (CuTeDSL) |
-| Profiling Tools | `amd/common/rocprofv3-profiling-guide.md` (Generic) + `amd/gluon/gfx942|gfx950-..--profiling_guide.md` (ATT Instruction-Level) | `nvidia/common/profiling/ncu-profiling-guide.md` + `nvidia/hopper/gluon/hopper-..--profiling_guide.md` (Nsight Compute) |
+| Profiling Tools | `amd/common/profiling/rocprofv3.md` + `amd/common/profiling/gfx942-gluon-att.md` / `gfx950-gluon-att.md` | `nvidia/common/profiling/ncu-profiling-guide.md` + `hopper-gluon-ncu.md` |
 | Hardware Specifications | `hardware-specs/hardware_specs_mi300x.md` + `hardware-specs/hardware_specs_mi355x.md` | `nvidia/common/nvidia-compute-capabilities.md` + `hardware-specs/hardware_specs_hopper.md` |
 
 ### Document Groups That Should Be Read Together
@@ -267,7 +267,7 @@ complementary optimization axes with AMD FlyDSL chunk-GDN.
 - `ncu-profiling-guide.md` (NVIDIA tools)
 - `ncu-measurement-discipline.md` (NVIDIA: trusting the numbers — Duration≠latency, noise floor, graph-capture pitfalls)
 - `ncu-rule-est-speedup-meta-rules.md` (NVIDIA: `Est. Speedup %` is a ceiling, not a wall-time delta)
-- `cdna3/cdna4-..--profiling_guide.md` (AMD tools)
+- `amd/common/profiling/gfx942-gluon-att.md` / `gfx950-gluon-att.md` (AMD tools)
 - Architecture-specific `hardware-specs/hardware_specs_*.md` (peak TFLOPS for compute utilization calculation)
 
 **Group 4: Conversion + Optimization Closed Loop**

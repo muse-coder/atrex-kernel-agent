@@ -514,4 +514,4 @@ tl.assume(stride_bn > 0)
 - **Prerequisites**: [Hopper Hardware Specifications](../../common/hardware-specs/hopper.md)
 - **Cross-Architecture Reference**: [CDNA3 ISA Optimization Checklist](../../../amd/gluon/gfx942/common_optimizations.md) | [CDNA4 ISA Optimization Checklist](../../../amd/gluon/gfx950/common_optimizations.md)
 - **ISA Reference**: [Hopper SASS Instruction Patterns](isa_patterns.md) — Detailed LDG/STG/WGMMA instruction descriptions
-- **Profiling**: [Hopper ncu Profiling Guide](profiling_guide.md)
+- **Profiling**: [Hopper ncu Profiling Guide](../../common/profiling/hopper-gluon-ncu.md)

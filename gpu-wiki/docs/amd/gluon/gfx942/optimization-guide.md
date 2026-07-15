@@ -101,7 +101,7 @@ Before optimization, **you must first determine whether the operator is compute-
 
 ### 1.1 Build a Roofline Model — Determine the Bottleneck Type
 
-> For the **complete methodology**, see [AMD GPU Roofline Analysis Methodology](../../common/roofline-analysis-methodology.md), including tile-level AI computation, Ridge Point tables, bottleneck determination rules, and tile size selection decision flow.
+> For the **complete methodology**, see [AMD GPU Roofline Analysis Methodology](../../common/profiling/roofline.md), including tile-level AI computation, Ridge Point tables, bottleneck determination rules, and tile size selection decision flow.
 
 ### 1.2 Measure the Actual Performance of the Current Case
 
@@ -125,7 +125,7 @@ actualbandwidth (TB/s) = Bytes_transferred / elapsed time (seconds) / 1e12
 
 ### 1.3 Assess Utilization
 
-> For **utilization formulas and peak parameters**, see [AMD GPU Roofline Analysis Methodology §4](../../common/roofline-analysis-methodology.md#4-utilization-assessment).
+> For **utilization formulas and peak parameters**, see [AMD GPU Roofline Analysis Methodology §4](../../common/profiling/roofline.md#4-utilization-assessment).
 
 **Gluon Tool Invocation**:
 
@@ -142,11 +142,11 @@ python tools/compute_utilization.py \
 
 ### 1.4 CU Utilization Pre-check
 
-> For the **CU utilization quick reference table and decision rules**, see [AMD GPU Roofline Analysis Methodology §3](../../common/roofline-analysis-methodology.md#3-cu-utilization-pre-check). When CU_ratio < 10%, skip ISA-level optimization and proceed directly to §3.9.
+> For the **CU utilization quick reference table and decision rules**, see [AMD GPU Roofline Analysis Methodology §3](../../common/profiling/roofline.md#3-cu-utilization-pre-check). When CU_ratio < 10%, skip ISA-level optimization and proceed directly to §3.9.
 
 ### 1.5 Theoretical Peak Performance Assessment
 
-> For **calculation methods and examples**, see [AMD GPU Roofline Analysis Methodology §5](../../common/roofline-analysis-methodology.md#5-theoretical-performance-upper-bound-assessment). When the theoretical peak performance is far below the hardware peak, the problem lies not in ISA-level optimization but at the operator configuration level.
+> For **calculation methods and examples**, see [AMD GPU Roofline Analysis Methodology §5](../../common/profiling/roofline.md#5-theoretical-performance-upper-bound-assessment). When the theoretical peak performance is far below the hardware peak, the problem lies not in ISA-level optimization but at the operator configuration level.
 
 **Gluon Tool Invocation**:
 
@@ -270,7 +270,7 @@ bash tools/profile_kernel.sh <kernel.py> --wrapper-name <wrapper> --output-dir .
  rm -rf tt_test # or input_att.yaml configuration output_directory
    ```
 
-For detailed profile interpretation guide, see `../../../../ref-docs/amd/gluon/gfx942/profiling_guide.md` (including complete cleanup strategy).
+For detailed profile interpretation guide, see `../../../../ref-docs/amd/common/profiling/gfx942-gluon-att.md` (including complete cleanup strategy).
 
 ### Profile Output Format (stats_*.csv)
 
@@ -687,7 +687,7 @@ Build on the converter guide's source transformation strategy:
 | Document | Content |
 |------|------|
 | `docs/hardware-specs/hardware_specs_mi308x.md` | AMD GPU Hardware Compute Specification Sheet |
-| `../../../../ref-docs/amd/gluon/gfx942/profiling_guide.md` | rocprofv3 Instruction-Level Profiling Detailed Guide |
+| `../../../../ref-docs/amd/common/profiling/gfx942-gluon-att.md` | rocprofv3 Instruction-Level Profiling Detailed Guide |
 | `../../../../ref-docs/amd/gluon/gfx942/common_optimizations.md` | General ISA Optimization Checklist (§3.0-§3.5, applicable to all AMD CDNA3 kernels) |
 | `../../../../ref-docs/amd/gluon/gfx942/` | Standard GEMM Optimization Topic (WPS pipeline, final configuration template, pitfalls 7-23, 44-59) |
 | `../../../../ref-docs/amd/gluon/gfx942/` | Small Matrix GEMM Optimization Topic (Tile size search, pitfalls 32-37, 41-43) |

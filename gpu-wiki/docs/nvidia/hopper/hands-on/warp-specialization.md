@@ -45,5 +45,5 @@ else:  # MMA warp
 
 - **CuTeDSL Architecture Primitives**: [CuTeDSL Architecture Primitives](../../common/cutedsl/nvidia-cutedsl-arch-primitives.md) — warp/lane intrinsics
 - **CuTeDSL SM90**: [CuTeDSL SM90-Specific Features](../cutedsl/hopper-cutedsl-sm90.md) — warpgroup collaboration
-- **Profiling**: [Hopper Profiling Guide](../gluon/profiling_guide.md) — ncu analysis of warp utilization
+- **Profiling**: [Hopper Profiling Guide](../../common/profiling/hopper-gluon-ncu.md) — ncu analysis of warp utilization
 - **Reference Kernels**: `reference-kernels/nvidia/hopper/` — 21 Hopper kernel source files

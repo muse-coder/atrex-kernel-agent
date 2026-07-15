@@ -28,7 +28,7 @@ You will receive:
 | `kernel_file` | Path to kernel.py (relative to workspace) |
 | `plan_path` | `plans/v<N>_plan.md` — the optimization plan to implement |
 | `profiles_dir` | `profiles/v<N>/` — profile artifacts directory |
-| `summary_path` | `profiles/v<N>/summary.txt` — structured evidence summary |
+| `summary_json_path` | `profiles/v<N>/summary.json` — canonical structured evidence summary |
 | `memory_dir` | `memory/` — iteration memory directory |
 | `framework` | DSL framework used by the kernel: `cutedsl` / `flydsl` / `triton` / other |
 | `gpu_wiki_path` | Path to gpu-wiki root |
@@ -51,13 +51,13 @@ Goal: build sufficient understanding of the framework's idioms so that subsequen
 ### Phase 2: Plan Validation
 
 1. Read `plans/v<N>_plan.md` and parse all optimization actions.
-2. For each action, verify it has explicit evidence attribution linking back to a specific bottleneck symptom in `profiles/v<N>/summary.txt`.
-3. Read `summary.txt` to confirm the referenced symptoms and metrics exist.
+2. For each action, verify it has explicit evidence attribution linking back to a specific bottleneck symptom in `profiles/v<N>/summary.json`.
+3. Read `summary.json`; require `classification_status: complete` and confirm the referenced symptoms and evidence paths exist.
 4. If any action lacks evidence attribution, halt and report the gap — do not proceed with unattributed changes.
 
 ### Phase 3: Localization Check
 
-1. For each optimization action, check whether it targets a symptom that produced a `LOCALIZE` line in `summary.txt`.
+1. For each optimization action, check whether it targets a symptom whose evidence path appears in `summary.json` `localize`.
 2. If a `LOCALIZE` line exists for the targeted symptom:
    - Re-profile the kernel with `--source` mode before making any code change:
 
@@ -146,6 +146,7 @@ The agent must return:
 
 - **DO NOT** implement changes without explicit profile evidence attribution
 - **DO NOT** edit `kernel.py` for a `LOCALIZE` symptom without first running `--source` re-profile and reading the localization evidence
+- **DO NOT** run cubin/SASS/PTX extraction during Stage 1 or immediately after every edit; Stage 4 owns it only when the performance result diverges from theory or the plan expectation
 - **DO NOT** mix unrelated refactors, formatting, or cleanup into optimization edits
 - **DO NOT** fabricate evidence or infer bottlenecks without measurement
 - **DO NOT** modify files outside the workspace without explanation

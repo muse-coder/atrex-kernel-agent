@@ -9,6 +9,7 @@ Index for `amd/common/`.
 | [gfx942/](gfx942/) | Composable Kernel (CK) Programming Model (MI308X) … |
 | [gfx950/](gfx950/) | CDNA4 FP8 GEMM Kernel Optimization in Practice |
 | [hands-on/](hands-on/) | Cross-Architecture Conditional Compilation … |
+| [profiling/](profiling/) | rocprofv3, Roofline, CDNA3/CDNA4 ATT, and trace-decoder workflow |
 
 ## Files
 
@@ -29,8 +30,5 @@ Index for `amd/common/`.
 | [coalesced-access-load-store-width.md](coalesced-access-load-store-width.md) | Coalesced Memory Access and Load/Store Instruction Width Optimization |
 | [lds-bank-conflict-optimization.md](lds-bank-conflict-optimization.md) | LDS Bank Conflict Optimization |
 | [occupancy-optimization.md](occupancy-optimization.md) | Occupancy Optimization |
-| [profiling-tools-overview.md](profiling-tools-overview.md) | Profiling Tools Overview |
-| [rocprofv3-profiling-guide.md](rocprofv3-profiling-guide.md) | AMD rocprofv3 Profiling Guide |
-| [roofline-analysis-methodology.md](roofline-analysis-methodology.md) | AMD GPU Roofline Analysis Methodology |
 | [scratch-elimination-vgpr-spill.md](scratch-elimination-vgpr-spill.md) | Eliminating Scratch Operations (Register Spills) |
 | [small-matrix-cu-utilization.md](small-matrix-cu-utilization.md) | Small Matrix / Low CU Utilization Optimization |

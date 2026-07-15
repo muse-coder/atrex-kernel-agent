@@ -12,3 +12,4 @@ Index for `nvidia/common/profiling/`.
 | [ncu-rule-est-speedup-meta-rules.md](ncu-rule-est-speedup-meta-rules.md) | NCU "Estimated Speedup" — When It's a Wall-Time Lever, When It Isn't |
 | [nsight-profiling-practice.md](nsight-profiling-practice.md) | Nsight Profiling in Practice |
 | [profiling-tools-by-arch.md](profiling-tools-by-arch.md) | Profiling Tools for Different Architectures |
+| [hopper-gluon-ncu.md](hopper-gluon-ncu.md) | Hopper/Gluon NCU instruction-level workflow |

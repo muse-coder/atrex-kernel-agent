@@ -42,5 +42,5 @@ c = tl.dot(a, b)
 ## Related
 
 - **CDNA3 ISA**: [CDNA3 ISA Instruction Patterns](../../gluon/gfx942/isa_patterns.md)
-- **Profiling**: [AMD rocprofv3 Profiling Guide](../rocprofv3-profiling-guide.md) — General usage of rocprofv3
+- **Profiling**: [AMD rocprofv3 Profiling Guide](../profiling/rocprofv3.md) — General usage of rocprofv3
 - **General Instruction Optimization**: [GPU Instruction-Level Optimization](../../../generic/gpu-instruction-optimization.md)

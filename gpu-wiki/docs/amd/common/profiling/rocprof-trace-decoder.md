@@ -52,12 +52,12 @@ For more API information, see the [ROCm docs](https://rocm.docs.amd.com/projects
 
 ## Related
 
-- [Changelog for Preview 0.1.4](CHANGELOG.md)
-- [AMD MI308X (gfx942) GEMM Optimization Techniques Reference](ck_gemm_optimization_reference.md)
-- [ISA Optimization Detailed Checklist](common_optimizations.md)
-- [Stopping Conditions](final_config_template.md)
-- [Gluon AMD gfx942 (CDNA3 / MI300) API & Performance Optimization Guide](gluon-amd-gfx942-optimization.md)
+- [Changelog for Preview 0.1.4](../../gluon/gfx942/CHANGELOG.md)
+- [AMD MI308X (gfx942) GEMM Optimization Techniques Reference](../../gluon/gfx942/ck_gemm_optimization_reference.md)
+- [ISA Optimization Detailed Checklist](../../gluon/gfx942/common_optimizations.md)
+- [Stopping Conditions](../../gluon/gfx942/final_config_template.md)
+- [Gluon AMD gfx942 (CDNA3 / MI300) API & Performance Optimization Guide](../../gluon/gfx942/gluon-amd-gfx942-optimization.md)
 - [NVIDIA Nsight Compute (NCU) Profiling Guide](../../../nvidia/common/profiling/ncu-profiling-guide.md)
-- [AMD rocprofv3 Profiling Guide](../../common/rocprofv3-profiling-guide.md)
+- [AMD rocprofv3 Profiling Guide](rocprofv3.md)
 - [Occupancy Optimization](../../common/occupancy-optimization.md)
 - [Document Relationship Diagram](../../../RELATIONS.md)

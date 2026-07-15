@@ -153,3 +153,45 @@ mapping now fails CI instead of silently becoming unsearchable.
 Passed the 22 query tests, generated-index, self-containment, structure, and
 whitespace checks. Verified GDN and FlashAttention each resolve to one Blackwell
 kernel page, while Paged Attention correctly reports no Blackwell operator page.
+## [2026-07-14] normalize | centralize profiling documentation by vendor
+
+Created `docs/amd/common/profiling/` as the single AMD profiling entry point,
+combining rocprofv3, Roofline, CDNA3/CDNA4 Gluon ATT, and the trace decoder.
+Merged the former AMD tools overview into its README and moved the Hopper/Gluon
+NCU guide into `docs/nvidia/common/profiling/`. Updated architecture catalogs,
+cross-vendor relations, the shared profile guide, and every inbound link; kernel
+case studies remain in their architecture/operator locations.
+
+## [2026-07-14] lint | validate centralized profiling navigation
+
+Passed query, structure, and self-containment tests; rebuilt the flat index and
+passed self-containment, generated-index, structure, and whitespace checks.
+## [2026-07-15] ingest | unify profiler diagnosis handoff
+
+Added the cross-platform `profiles/v<N>/summary.json` contract with a
+human-readable `summary.txt` rendering. NVIDIA classification now records
+`blocked` or `skipped` states when helpers, parsing, or classification are not
+available. Added conservative AMD ATT/PMC/ASM classification and wired
+`profile_kernel.sh` to emit the same contract. Research and implementation
+agents now gate on `classification_status: complete` and consume JSON symptoms
+and localization paths rather than inferring them from raw artifacts.
+
+## [2026-07-15] lint | validate unified profiler contract
+
+Added offline contract tests for summary rendering and AMD classification;
+passed Python and shell syntax checks, query/structure/self-containment tests,
+and wiki index/link/structure/whitespace gates.
+## [2026-07-15] ingest | make NVIDIA ISA validation performance-mismatch-driven
+
+Added post-change `validate_nvidia_isa.py` for candidate `.ncu-rep` or cubin
+evidence. Research plans now state the measurable performance expectation; Stage
+4 invokes SASS only when measured results diverge from theory or that
+expectation. PTX dumping is optional and only for explicit lowering claims with
+an accessible cubin, keeping macro NCU diagnosis separate from instruction-level
+micro-tuning.
+
+## [2026-07-15] lint | validate NVIDIA ISA performance-mismatch gate
+
+Added offline SASS fixtures for expected SM100 lowering and spill rejection;
+passed profile-contract tests, Python and shell syntax checks, query/structure/
+self-containment tests, and wiki index/link/structure/whitespace gates.

@@ -36,6 +36,8 @@ import math
 import sys
 from pathlib import Path
 
+from profile_summary import build_summary
+
 
 # Pattern definitions: the 14 NCU diagnosis Patterns (see reference/profile_guide.md)
 # Each Pattern maps to: (pattern_id, label, gpu-wiki symptom)
@@ -386,6 +388,8 @@ def main():
                         help="Output summary.txt path (default: stdout)")
     parser.add_argument("--json", action="store_true",
                         help="Output in JSON format (findings list)")
+    parser.add_argument("--summary-json", default=None,
+                        help="Write the cross-platform summary.json contract")
     args = parser.parse_args()
 
     metrics_path = Path(args.metrics)
@@ -405,13 +409,22 @@ def main():
         sys.exit(1)
 
     findings = classify(metrics)
+    symptoms = sorted(set(PATTERNS[f[0]][2] for f in findings if f[0] in PATTERNS))
+    localize = sorted({f"analysis/{path}" for symptom in symptoms
+                       for path in LOCALIZE_BY_SYMPTOM.get(symptom, ())})
+    contract = build_summary(
+        platform="nvidia", classification_status="complete",
+        evidence=["analysis/metrics_key_run.json"], symptoms=symptoms,
+        localize=localize,
+        findings=[{"pattern": pid, "label": label, "confidence": confidence,
+                   "evidence": evidence}
+                  for pid, label, confidence, evidence in findings],
+    )
+    if args.summary_json:
+        Path(args.summary_json).write_text(
+            json.dumps(contract, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
     if args.json:
-        symptoms = sorted(set(
-            PATTERNS[f[0]][2] for f in findings if f[0] in PATTERNS
-        ))
-        localize = sorted({f for s in symptoms
-                           for f in LOCALIZE_BY_SYMPTOM.get(s, ())})
         result = {
             "findings": [
                 {"pattern": pid, "label": label,
@@ -419,7 +432,7 @@ def main():
                 for pid, label, conf, ev in findings
             ],
             "symptoms": symptoms,
-            "localize": [f"analysis/{f}" for f in localize],
+            "localize": localize,
         }
         output = json.dumps(result, indent=2, ensure_ascii=False)
     else:

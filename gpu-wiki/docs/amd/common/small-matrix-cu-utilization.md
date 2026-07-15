@@ -9,7 +9,7 @@ For scenarios with small matrices (grid size far smaller than the number of CUs)
 
 ## When to Use
 
-When Roofline analysis (see [Roofline Analysis Methodology](roofline-analysis-methodology.md)) shows **compute utilization < 5%** and the cause is **matrix dimensions too small, resulting in grid blocks far fewer than GPU CU count**.
+When Roofline analysis (see [Roofline Analysis Methodology](profiling/roofline.md)) shows **compute utilization < 5%** and the cause is **matrix dimensions too small, resulting in grid blocks far fewer than GPU CU count**.
 
 **Core Insight**: In small matrix scenarios, **CU utilization is the primary bottleneck**, taking priority over all ISA-level optimizations. When the grid has only 1-4 blocks, 90%+ of CUs are idle, and the benefits of optimizations like warp_pipeline_stage and bank conflict elimination are negligible or even negative.
 
@@ -99,6 +99,6 @@ The following optimizations have proven ineffective or harmful on small matrices
 
 ## Related
 
-- **Prerequisites**: [Roofline Analysis Methodology](roofline-analysis-methodology.md) — Tile AI, CU utilization pre-check
+- **Prerequisites**: [Roofline Analysis Methodology](profiling/roofline.md) — Tile AI, CU utilization pre-check
 - **Hardware Specifications**: [Hardware Specification Comparison](../hardware-specs/hardware-comparison-cdna3-cdna4.md) — CU count, peak compute
 - **Occupancy**: [Occupancy Optimization](occupancy-optimization.md) — VGPR and occupancy relationship
